@@ -1,6 +1,6 @@
 # JusticeFlow API
 
-The FastAPI service owns JusticeFlow domain rules, local-model orchestration, persistence, evaluation, and observability.
+The FastAPI service owns JusticeFlow domain rules, local-model orchestration, persistence, evaluation, structured logging, and privacy-safe Langfuse tracing.
 
 ## Commands
 

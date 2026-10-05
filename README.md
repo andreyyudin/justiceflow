@@ -26,6 +26,7 @@ JusticeFlow does not predict offending, guilt, legal outcomes, sentence, or indi
 - Deterministic safeguards around probabilistic model output
 - Versioned synthetic evaluation scenarios
 - Structured JSON logs, request correlation IDs, and latency measurement
+- Optional privacy-safe Langfuse generation tracing and quality scores
 - Multi-stage, non-root Docker images
 - Health-checked Docker Compose orchestration
 - Strict typing, linting, tests, coverage, and production dependency auditing
@@ -201,11 +202,40 @@ Every HTTP response carries an `X-Request-ID`. If the caller provides one, Justi
 
 Logs intentionally avoid emitting case summaries or prompts.
 
+### Langfuse LLM tracing
+
+Langfuse tracing is optional and disabled unless both `LANGFUSE_PUBLIC_KEY` and
+`LANGFUSE_SECRET_KEY` are configured. When enabled, each model request creates a
+generation observation containing:
+
+- model name and bounded inference parameters
+- token usage and latency
+- final queue recommendation and confidence
+- schema-validation score
+- failure type for unsuccessful generations
+- synthetic-data and mandatory-human-review markers
+
+Prompts, case summaries, model rationales, and evidence are deliberately excluded
+from Langfuse. Regression tests inspect the telemetry calls and fail if those values
+are exported.
+
+Configure a Langfuse Cloud or self-hosted project in `.env`:
+
+```text
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+LANGFUSE_BASE_URL=
+LANGFUSE_ENVIRONMENT=local
+JUSTICEFLOW_RELEASE=development
+```
+
+Leaving either key blank keeps tracing disabled and does not affect local operation.
+
 ## Repository structure
 
 ```text
 backend/
-  app/               FastAPI, domain rules, persistence, and observability
+  app/               FastAPI, domain rules, persistence, and Langfuse observability
   evals/             Versioned synthetic evaluation scenarios
   migrations/        Alembic database migrations
   tests/             Unit and API tests
@@ -221,7 +251,7 @@ The local deployment is designed to make the next production steps explicit:
 - replace local Ollama with an approved, private model endpoint through the existing provider boundary
 - use managed PostgreSQL with workload identity and secret management
 - deploy immutable images to a managed container platform
-- export structured telemetry to the organisation's approved observability platform
+- route privacy-safe Langfuse telemetry to the organisation's approved observability platform
 - add authentication, authorisation, retention, redaction, and information-governance controls
 - run user research and accessibility testing with frontline staff
 - establish model and rule change approval, rollback, incident, and monitoring processes

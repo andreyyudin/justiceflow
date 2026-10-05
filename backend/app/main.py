@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .cases import CASES, get_case
 from .database import create_engine, create_session_factory, session_scope
+from .llm_observability import create_llm_telemetry
 from .observability import configure_logging, request_context_middleware
 from .repositories import DecisionRepository
 from .schemas import Case, Decision, DecisionRequest, TriageRequest, TriageResult
@@ -25,10 +26,22 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000"
     database_url: str = "postgresql+asyncpg://localhost/justiceflow"
     log_level: str = "INFO"
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    langfuse_base_url: str | None = None
+    langfuse_environment: str = "local"
+    release: str = "development"
 
 
 settings = Settings()
 configure_logging(settings.log_level)
+llm_telemetry = create_llm_telemetry(
+    public_key=settings.langfuse_public_key,
+    secret_key=settings.langfuse_secret_key,
+    base_url=settings.langfuse_base_url,
+    environment=settings.langfuse_environment,
+    release=settings.release,
+)
 engine = create_engine(settings.database_url)
 session_factory = create_session_factory(engine)
 
@@ -85,6 +98,7 @@ async def triage_case(request: TriageRequest) -> TriageResult:
         settings.ollama_url,
         settings.ollama_model,
         settings.ollama_timeout_seconds,
+        llm_telemetry,
     )
     try:
         result = await client.triage(case)
