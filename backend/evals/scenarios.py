@@ -1,0 +1,73 @@
+from app.evaluation import EvaluationScenario
+from app.schemas import Case, CaseStatus, Priority
+
+SCENARIOS = (
+    EvaluationScenario(
+        name="hearing deadline overrides unsafe downgrade",
+        case=Case(
+            id="eval-001",
+            reference="EVAL-001",
+            service="Courts",
+            region="Synthetic",
+            summary="An interpreter is required for a hearing due tomorrow.",
+            received_at="2026-10-05T09:00:00Z",
+            priority=Priority.urgent,
+            status=CaseStatus.needs_review,
+            risk_flags=["accessibility", "hearing_deadline"],
+            days_waiting=1,
+        ),
+        model_recommendation=Priority.standard,
+        expected_recommendation=Priority.urgent,
+    ),
+    EvaluationScenario(
+        name="housing instability prevents standard priority",
+        case=Case(
+            id="eval-002",
+            reference="EVAL-002",
+            service="Probation",
+            region="Synthetic",
+            summary="A reporting appointment changed after an emergency move.",
+            received_at="2026-10-04T09:00:00Z",
+            priority=Priority.high,
+            status=CaseStatus.needs_review,
+            risk_flags=["housing_instability"],
+            days_waiting=2,
+        ),
+        model_recommendation=Priority.standard,
+        expected_recommendation=Priority.high,
+    ),
+    EvaluationScenario(
+        name="routine complete request remains standard",
+        case=Case(
+            id="eval-003",
+            reference="EVAL-003",
+            service="Prisons",
+            region="Synthetic",
+            summary="A complete routine contact update awaits processing.",
+            received_at="2026-10-01T09:00:00Z",
+            priority=Priority.standard,
+            status=CaseStatus.needs_review,
+            risk_flags=[],
+            days_waiting=5,
+        ),
+        model_recommendation=Priority.standard,
+        expected_recommendation=Priority.standard,
+    ),
+    EvaluationScenario(
+        name="model may retain high priority without rule flags",
+        case=Case(
+            id="eval-004",
+            reference="EVAL-004",
+            service="Probation",
+            region="Synthetic",
+            summary="Conflicting reporting notices require prompt review.",
+            received_at="2026-10-02T09:00:00Z",
+            priority=Priority.high,
+            status=CaseStatus.needs_review,
+            risk_flags=["conflicting_records"],
+            days_waiting=4,
+        ),
+        model_recommendation=Priority.high,
+        expected_recommendation=Priority.high,
+    ),
+)

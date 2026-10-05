@@ -1,0 +1,87 @@
+name: justiceflow
+
+services:
+  database:
+    image: postgres:18.0-bookworm
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-justiceflow}
+      POSTGRES_USER: ${POSTGRES_USER:-justiceflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      JUSTICEFLOW_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-justiceflow}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-justiceflow}
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ./backend
+    environment:
+      JUSTICEFLOW_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-justiceflow}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-justiceflow}
+      JUSTICEFLOW_OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      JUSTICEFLOW_OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:4b}
+      JUSTICEFLOW_OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-120}
+      JUSTICEFLOW_ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      JUSTICEFLOW_LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      database:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    ports:
+      - "${API_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://localhost:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
