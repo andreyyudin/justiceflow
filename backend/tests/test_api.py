@@ -276,7 +276,7 @@ def test_observability_status_is_restricted_to_auditor() -> None:
     assert auditor_response.status_code == 200
     assert auditor_response.json() == {
         "structured_logs": True,
-        "langfuse_enabled": False,
+        "langfuse_enabled": True,
         "environment": "local",
         "release": "development",
     }

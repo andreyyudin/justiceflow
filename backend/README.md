@@ -1,6 +1,6 @@
 # JusticeFlow API
 
-The FastAPI service owns JusticeFlow domain rules, OIDC bearer-token validation, role authorization, local-model orchestration, persistence, deterministic safety-floor regression, fail-closed rejection of prohibited model rationale, structured logging, and privacy-safe Langfuse tracing.
+The FastAPI service owns JusticeFlow domain rules, OIDC bearer-token validation, role authorization, local-model orchestration, persistence, deterministic safety-floor regression, fail-closed rejection of prohibited model rationale, structured logging, and required privacy-safe Langfuse tracing.
 
 ## Commands
 

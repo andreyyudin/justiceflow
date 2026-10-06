@@ -90,14 +90,27 @@ def test_langfuse_adapter_omits_prompt_and_case_summary() -> None:
     assert kwargs["metadata"]["synthetic_data"] is True
 
 
-def test_langfuse_is_disabled_without_both_keys() -> None:
-    assert (
+@pytest.mark.parametrize(
+    ("public_key", "secret_key", "base_url"),
+    [
+        ("", "secret", "http://langfuse.test"),
+        ("public", "", "http://langfuse.test"),
+        ("public", "secret", ""),
+    ],
+)
+def test_langfuse_rejects_incomplete_configuration(
+    public_key: str,
+    secret_key: str,
+    base_url: str,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="Langfuse public key, secret key, and base URL are required",
+    ):
         create_llm_telemetry(
-            public_key=None,
-            secret_key=None,
-            base_url=None,
+            public_key=public_key,
+            secret_key=secret_key,
+            base_url=base_url,
             environment="test",
             release="test",
         )
-        is None
-    )

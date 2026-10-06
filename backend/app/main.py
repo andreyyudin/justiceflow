@@ -44,9 +44,9 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000"
     database_url: str = "postgresql+asyncpg://localhost/justiceflow"
     log_level: str = "INFO"
-    langfuse_public_key: str | None = None
-    langfuse_secret_key: str | None = None
-    langfuse_base_url: str | None = None
+    langfuse_public_key: str
+    langfuse_secret_key: str
+    langfuse_base_url: str
     langfuse_environment: str = "local"
     release: str = "development"
     oidc_issuer: str = "http://localhost:8080/realms/justiceflow"
@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     oidc_jwks_url: str = "http://localhost:8080/realms/justiceflow/protocol/openid-connect/certs"
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]  # Values are loaded from required environment variables.
 configure_logging(settings.log_level)
 llm_telemetry = create_llm_telemetry(
     public_key=settings.langfuse_public_key,
@@ -142,7 +142,7 @@ async def list_cases(
 async def observability_status(identity: IdentityDependency) -> ObservabilityStatus:
     authorize(identity, Role.auditor)
     return ObservabilityStatus(
-        langfuse_enabled=llm_telemetry is not None,
+        langfuse_enabled=True,
         environment=settings.langfuse_environment,
         release=settings.release,
     )

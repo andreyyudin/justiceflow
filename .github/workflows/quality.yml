@@ -9,6 +9,19 @@ on:
 permissions:
   contents: read
 
+env:
+  LANGFUSE_PUBLIC_KEY: pk-lf-ci-validation
+  LANGFUSE_SECRET_KEY: sk-lf-ci-validation
+  LANGFUSE_BASE_URL: http://langfuse.test
+  LANGFUSE_NEXTAUTH_SECRET: ci-validation-nextauth-secret
+  LANGFUSE_SALT: ci-validation-salt
+  LANGFUSE_ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+  LANGFUSE_POSTGRES_PASSWORD: ci-validation-postgres-password
+  LANGFUSE_CLICKHOUSE_PASSWORD: ci-validation-clickhouse-password
+  LANGFUSE_REDIS_AUTH: ci-validation-redis-password
+  LANGFUSE_MINIO_PASSWORD: ci-validation-minio-password
+  LANGFUSE_INIT_USER_PASSWORD: ci-validation-administrator-password
+
 concurrency:
   group: quality-${{ github.ref }}
   cancel-in-progress: true

@@ -123,14 +123,14 @@ class LangfuseTelemetry:
 
 def create_llm_telemetry(
     *,
-    public_key: str | None,
-    secret_key: str | None,
-    base_url: str | None,
+    public_key: str,
+    secret_key: str,
+    base_url: str,
     environment: str,
     release: str,
-) -> LlmTelemetry | None:
-    if not public_key or not secret_key:
-        return None
+) -> LlmTelemetry:
+    if not public_key.strip() or not secret_key.strip() or not base_url.strip():
+        raise ValueError("Langfuse public key, secret key, and base URL are required.")
     return LangfuseTelemetry(
         public_key=public_key,
         secret_key=secret_key,

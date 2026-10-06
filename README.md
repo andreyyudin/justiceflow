@@ -156,7 +156,7 @@ ollama pull qwen3:4b
 cp .env.example .env
 ```
 
-Replace `POSTGRES_PASSWORD` and `KEYCLOAK_ADMIN_PASSWORD` with long random local passwords. The `.env` file is ignored by Git. The imported caseworker and auditor accounts are synthetic local fixtures used to exercise the real OIDC flow.
+Replace every `replace-with-...` value with a long random local secret. Generate `LANGFUSE_NEXTAUTH_SECRET`, `LANGFUSE_SALT`, and `LANGFUSE_ENCRYPTION_KEY` with `openssl rand -hex 32`. Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` to the matching bootstrap project keys that the local Langfuse service will create. The `.env` file is ignored by Git. The imported caseworker and auditor accounts are synthetic local fixtures used to exercise the real OIDC flow.
 
 ### 3. Start the local production-mode stack
 
@@ -166,7 +166,7 @@ docker compose up --build
 
 The identity service imports the local Keycloak realm and must become healthy before the API starts. The migration service waits for PostgreSQL readiness and applies Alembic migrations before the API starts. The web service waits for the API health check.
 
-Open the caseworker interface on port 3000. The FastAPI OpenAPI documentation is available on port 8000 under `/docs`.
+Open the caseworker interface on port 3000, Langfuse on port 3100, and the FastAPI OpenAPI documentation on port 8000 under `/docs`. Langfuse is a required part of the local stack: the API waits for its web service to become healthy before starting.
 
 ### 4. Stop the stack
 
@@ -290,9 +290,7 @@ Logs intentionally avoid emitting case summaries or prompts.
 
 ### Langfuse LLM tracing
 
-Langfuse tracing is optional and disabled unless both `LANGFUSE_PUBLIC_KEY` and
-`LANGFUSE_SECRET_KEY` are configured. When enabled, each model request creates a
-generation observation containing:
+Langfuse tracing is required. The default Compose stack includes pinned Langfuse web and worker services plus isolated PostgreSQL, ClickHouse, Redis, and MinIO dependencies. The API requires matching `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` values and waits for Langfuse health before starting. Each model request creates a generation observation containing:
 
 - model name and bounded inference parameters
 - token usage and latency
@@ -304,17 +302,9 @@ Prompts, case summaries, model rationales, and evidence are deliberately exclude
 from Langfuse. Regression tests inspect the telemetry calls and fail if those values
 are exported.
 
-Configure a Langfuse Cloud or self-hosted project in `.env`:
+The local stack bootstraps one organization, one project, and one administrator from `.env`. Open Langfuse on port 3100 and sign in with `LANGFUSE_INIT_USER_EMAIL` and `LANGFUSE_INIT_USER_PASSWORD`. JusticeFlow uses the internal `LANGFUSE_BASE_URL` value while the browser uses the published local port.
 
-```text
-LANGFUSE_PUBLIC_KEY=
-LANGFUSE_SECRET_KEY=
-LANGFUSE_BASE_URL=
-LANGFUSE_ENVIRONMENT=local
-JUSTICEFLOW_RELEASE=development
-```
-
-Leaving either key blank keeps tracing disabled and does not affect local operation.
+Prompts, case summaries, model rationales, and evidence remain excluded from exported telemetry. Removing either project key is a configuration error and prevents the required Compose model from starting.
 
 ## Repository structure
 
