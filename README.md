@@ -95,9 +95,9 @@ Model output is constrained by application-owned rules:
 - accessibility, hearing-deadline, and housing-instability flags cannot be downgraded to `standard`
 - a model can recommend a higher priority, but cannot bypass the fixed safety floor
 
-### Bounded task
+### Bounded task and untrusted case data
 
-The model can return only one of three queue priorities. The system prompt prohibits inference about protected characteristics, guilt, offending, or legal outcomes.
+The model can return only one of three queue priorities. The system prompt prohibits inference about protected characteristics, guilt, offending, or legal outcomes. Every supplied case field is explicitly treated as untrusted data rather than an instruction, and commands or requested role changes embedded in case text must not override the system task. Backend contract tests verify this application-owned instruction and data separation.
 
 ### Synthetic data
 
@@ -114,7 +114,7 @@ uv run python -m evals.run
 
 Each versioned scenario supplies a synthetic case and a preselected recommendation, then verifies the priority produced by the application-owned safety floor. The command fails unless every scenario passes. It currently covers deadline escalation, accessibility and housing safeguards, routine requests, and preservation of a valid high-priority recommendation.
 
-This suite does not invoke the configured model and is not a model-quality evaluation. It does not measure recommendation accuracy, rationale quality, evidence grounding, output-schema reliability, prompt-injection resilience, or confidence calibration. Strict output validation and grounded-evidence behaviour are covered separately by backend tests, while the real local model is exercised manually through the browser workflow.
+This suite does not invoke the configured model and is not a model-quality evaluation. It does not measure recommendation accuracy, rationale quality, evidence grounding, output-schema reliability, prompt-injection resilience, or confidence calibration. Strict output validation, grounded-evidence behaviour, and the untrusted case-data boundary are covered separately by backend tests. The configured local model is exercised by the repository-owned, opt-in browser smoke journey documented below.
 
 ### Browser accessibility and authentication journeys
 
