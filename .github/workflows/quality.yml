@@ -103,12 +103,16 @@ jobs:
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.15.7"
+      - name: Set up TFLint
+        uses: terraform-linters/setup-tflint@v6.3.2
       - name: Check Terraform formatting
         run: terraform -chdir=infra fmt -check -recursive
       - name: Initialize without backend
         run: terraform -chdir=infra init -backend=false -input=false
       - name: Validate Terraform
         run: terraform -chdir=infra validate
+      - name: Lint Terraform
+        run: tflint --chdir=infra --no-color
 
   browser:
     name: OIDC and accessibility browser journeys
