@@ -63,8 +63,13 @@ variable "postgres_administrator_password" {
 }
 
 variable "ollama_url" {
-  description = "Approved private Ollama-compatible endpoint reachable from Azure."
+  description = "Approved private HTTPS Ollama-compatible endpoint reachable from Azure."
   type        = string
+
+  validation {
+    condition     = can(regex("^https://[^[:space:]]+$", var.ollama_url))
+    error_message = "Production Ollama endpoint must be a non-empty HTTPS URL."
+  }
 }
 
 variable "ollama_model" {
@@ -88,9 +93,17 @@ variable "langfuse_secret_key" {
 }
 
 variable "langfuse_base_url" {
-  description = "Optional approved Langfuse Cloud or self-hosted endpoint."
+  description = "Optional approved HTTPS Langfuse Cloud or self-hosted endpoint."
   type        = string
   default     = ""
+
+  validation {
+    condition = (
+      var.langfuse_base_url == ""
+      || can(regex("^https://[^[:space:]]+$", var.langfuse_base_url))
+    )
+    error_message = "Langfuse endpoint must be empty or a non-empty HTTPS URL."
+  }
 }
 
 variable "tags" {
