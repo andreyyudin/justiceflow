@@ -29,6 +29,7 @@ JusticeFlow does not predict offending, guilt, legal outcomes, sentence, or indi
 - Optional privacy-safe Langfuse generation tracing and quality scores
 - OpenID Connect Authorization Code with PKCE and signed JWT validation
 - Caseworker and auditor roles with server-derived reviewer identity
+- Real-browser OIDC journeys and automated WCAG A/AA accessibility scans
 - Multi-stage, non-root Docker images
 - Health-checked Docker Compose orchestration
 - Reviewable Azure infrastructure using Terraform and AzureRM
@@ -109,6 +110,18 @@ uv run python -m evals.run
 ```
 
 The suite fails unless every versioned scenario passes. It currently covers deadline escalation, accessibility and housing safeguards, routine requests, and valid high-priority recommendations.
+
+### Browser accessibility and authentication journeys
+
+Playwright drives the complete Docker Compose stack and signs in through the real local Keycloak Authorization Code with PKCE flow. The browser suite covers:
+
+- the unauthenticated sign-in page
+- caseworker login and access to triage controls
+- auditor login and enforced read-only access
+- OIDC sign-out
+- automated axe-core scans against WCAG 2 A and AA rules
+
+The accessibility gate found and fixed a queue metadata contrast defect during implementation. Automated checks complement, rather than replace, manual accessibility testing and user research.
 
 ## Run locally
 
@@ -205,7 +218,11 @@ npm ci
 npm run lint
 npm run build
 npm audit --omit=dev --audit-level=high
+npm run test:e2e:install
+npm run test:e2e
 ```
+
+The browser suite expects the complete Docker Compose stack to be running because it exercises the real Keycloak login and protected API.
 
 Deployment configuration:
 
@@ -303,7 +320,7 @@ The local deployment is designed to make the next production steps explicit:
 - deploy immutable digest-pinned images through an approved sandbox pipeline
 - route privacy-safe Langfuse telemetry to the organisation's approved observability platform
 - add retention, redaction, and information-governance controls
-- run user research and accessibility testing with frontline staff
+- run manual accessibility testing and user research with frontline staff
 - establish model and rule change approval, rollback, incident, and monitoring processes
 
 The local implementation is not presented as ready for real justice data. It is a production-shaped technical demonstration with the important safety and operational boundaries made explicit.

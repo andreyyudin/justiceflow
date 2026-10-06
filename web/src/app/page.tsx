@@ -267,13 +267,13 @@ export default function Home() {
                       <p className="line-clamp-2 text-sm leading-6 text-[#39433d]">
                         {item.summary}
                       </p>
-                      <p className="mt-2 text-xs text-[#748078]">
+                      <p className="mt-2 text-xs text-[#58645d]">
                         {item.service} · {item.region}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-semibold">{item.days_waiting}</p>
-                      <p className="text-[11px] uppercase tracking-wide text-[#748078]">
+                      <p className="text-[11px] uppercase tracking-wide text-[#58645d]">
                         days waiting
                       </p>
                     </div>

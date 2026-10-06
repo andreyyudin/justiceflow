@@ -109,3 +109,39 @@ jobs:
         run: terraform -chdir=infra init -backend=false -input=false
       - name: Validate Terraform
         run: terraform -chdir=infra validate
+
+  browser:
+    name: OIDC and accessibility browser journeys
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      POSTGRES_PASSWORD: browser-test-password
+      KEYCLOAK_ADMIN_PASSWORD: browser-test-identity-password
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.23.3"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install pinned npm
+        run: npm install --global npm@12.2.0
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+      - name: Install Chromium and operating-system dependencies
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Start production-shaped stack
+        run: docker compose up -d --build --wait
+      - name: Run real OIDC and accessibility journeys
+        working-directory: web
+        run: npm run test:e2e
+      - name: Show service logs after failure
+        if: failure()
+        run: docker compose logs --no-color --tail=150 identity api web
+      - name: Stop disposable stack
+        if: always()
+        run: docker compose down --volumes
