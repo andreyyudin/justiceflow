@@ -1,6 +1,6 @@
 name_suffix                    = "replace01"
-api_image                      = "replace.azurecr.io/justiceflow-api@sha256:replace"
-web_image                      = "replace.azurecr.io/justiceflow-web@sha256:replace"
+api_image                      = "replace.azurecr.io/justiceflow-api@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+web_image                      = "replace.azurecr.io/justiceflow-web@sha256:0000000000000000000000000000000000000000000000000000000000000000"
 postgres_administrator_password = "supply-through-secured-ci-variable"
 ollama_url                     = "https://approved-private-model-endpoint.example"
 langfuse_base_url              = "https://approved-langfuse-endpoint.example"

@@ -26,13 +26,23 @@ variable "name_suffix" {
 }
 
 variable "api_image" {
-  description = "Immutable API image reference, preferably pinned by digest."
+  description = "Immutable API image reference pinned by SHA-256 digest."
   type        = string
+
+  validation {
+    condition     = can(regex("^.+@sha256:[0-9a-f]{64}$", var.api_image))
+    error_message = "API image must be an immutable reference ending in @sha256 followed by 64 lowercase hexadecimal characters."
+  }
 }
 
 variable "web_image" {
-  description = "Immutable web image reference, preferably pinned by digest."
+  description = "Immutable web image reference pinned by SHA-256 digest."
   type        = string
+
+  validation {
+    condition     = can(regex("^.+@sha256:[0-9a-f]{64}$", var.web_image))
+    error_message = "Web image must be an immutable reference ending in @sha256 followed by 64 lowercase hexadecimal characters."
+  }
 }
 
 variable "postgres_administrator_login" {

@@ -38,7 +38,7 @@ These commands install the pinned provider and validate configuration only. They
 
 Copy `terraform.tfvars.example` to an ignored `terraform.tfvars` only in an approved sandbox. Supply secrets through protected CI variables rather than committing them.
 
-Image inputs should be immutable digest references. The web image must be built with the final public API URL, OIDC authority, and public client ID because `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_OIDC_AUTHORITY`, and `NEXT_PUBLIC_OIDC_CLIENT_ID` are embedded during the Next.js build.
+Image inputs must be immutable SHA-256 digest references; Terraform rejects mutable tags and malformed digests. The web image must be built with the final public API URL, OIDC authority, and public client ID because `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_OIDC_AUTHORITY`, and `NEXT_PUBLIC_OIDC_CLIENT_ID` are embedded during the Next.js build.
 
 The API receives the matching HTTPS issuer, audience, and JWKS URL as runtime settings. The local Keycloak realm proves the protocol and role contract; Azure deployment uses an approved OIDC tenant such as Microsoft Entra ID rather than deploying the local development identity service.
 
