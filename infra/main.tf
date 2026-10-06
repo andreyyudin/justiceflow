@@ -13,7 +13,18 @@ locals {
     var.tags,
   )
 
-  database_url = "postgresql+asyncpg://${var.postgres_administrator_login}:${urlencode(var.postgres_administrator_password)}@${azurerm_postgresql_flexible_server.main.fqdn}:5432/justiceflow"
+  database_url     = "postgresql+asyncpg://${var.postgres_administrator_login}:${urlencode(var.postgres_administrator_password)}@${azurerm_postgresql_flexible_server.main.fqdn}:5432/justiceflow"
+  langfuse_enabled = var.langfuse_public_key != "" && var.langfuse_secret_key != ""
+}
+
+check "langfuse_credentials" {
+  assert {
+    condition = (
+      (var.langfuse_public_key == "" && var.langfuse_secret_key == "")
+      || local.langfuse_enabled
+    )
+    error_message = "Langfuse public and secret keys must either both be configured or both be empty."
+  }
 }
 
 resource "azurerm_resource_group" "main" {
@@ -130,7 +141,7 @@ resource "azurerm_key_vault_secret" "database_url" {
 }
 
 resource "azurerm_key_vault_secret" "langfuse_public_key" {
-  count        = var.langfuse_public_key == "" ? 0 : 1
+  count        = local.langfuse_enabled ? 1 : 0
   name         = "langfuse-public-key"
   value        = var.langfuse_public_key
   key_vault_id = azurerm_key_vault.main.id
@@ -139,7 +150,7 @@ resource "azurerm_key_vault_secret" "langfuse_public_key" {
 }
 
 resource "azurerm_key_vault_secret" "langfuse_secret_key" {
-  count        = var.langfuse_secret_key == "" ? 0 : 1
+  count        = local.langfuse_enabled ? 1 : 0
   name         = "langfuse-secret-key"
   value        = var.langfuse_secret_key
   key_vault_id = azurerm_key_vault.main.id
@@ -171,7 +182,7 @@ resource "azurerm_container_app" "api" {
   }
 
   dynamic "secret" {
-    for_each = var.langfuse_public_key == "" ? [] : [1]
+    for_each = local.langfuse_enabled ? [1] : []
     content {
       name                = "langfuse-public-key"
       identity            = azurerm_user_assigned_identity.workload.id
@@ -180,7 +191,7 @@ resource "azurerm_container_app" "api" {
   }
 
   dynamic "secret" {
-    for_each = var.langfuse_secret_key == "" ? [] : [1]
+    for_each = local.langfuse_enabled ? [1] : []
     content {
       name                = "langfuse-secret-key"
       identity            = azurerm_user_assigned_identity.workload.id
@@ -255,7 +266,7 @@ resource "azurerm_container_app" "api" {
       }
 
       dynamic "env" {
-        for_each = var.langfuse_public_key == "" ? [] : [1]
+        for_each = local.langfuse_enabled ? [1] : []
         content {
           name        = "JUSTICEFLOW_LANGFUSE_PUBLIC_KEY"
           secret_name = "langfuse-public-key"
@@ -263,7 +274,7 @@ resource "azurerm_container_app" "api" {
       }
 
       dynamic "env" {
-        for_each = var.langfuse_secret_key == "" ? [] : [1]
+        for_each = local.langfuse_enabled ? [1] : []
         content {
           name        = "JUSTICEFLOW_LANGFUSE_SECRET_KEY"
           secret_name = "langfuse-secret-key"
