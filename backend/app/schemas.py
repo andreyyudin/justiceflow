@@ -47,7 +47,6 @@ class DecisionRequest(BaseModel):
     case_id: str
     outcome: Priority
     reason: str = Field(min_length=10, max_length=500)
-    reviewer: str = Field(min_length=2, max_length=100)
 
 
 class Decision(BaseModel):

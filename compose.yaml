@@ -1,6 +1,26 @@
 name: justiceflow
 
 services:
+  identity:
+    image: quay.io/keycloak/keycloak:26.8.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-local-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD in .env}
+    volumes:
+      - ./local/keycloak/justiceflow-realm.json:/opt/keycloak/data/import/justiceflow-realm.json:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /realms/justiceflow/.well-known/openid-configuration HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    ports:
+      - "${IDENTITY_PORT:-8080}:8080"
+    restart: unless-stopped
+
   database:
     image: postgres:18.0-bookworm
     environment:
@@ -45,9 +65,14 @@ services:
       JUSTICEFLOW_LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}
       JUSTICEFLOW_LANGFUSE_ENVIRONMENT: ${LANGFUSE_ENVIRONMENT:-local}
       JUSTICEFLOW_RELEASE: ${JUSTICEFLOW_RELEASE:-development}
+      JUSTICEFLOW_OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8080/realms/justiceflow}
+      JUSTICEFLOW_OIDC_AUDIENCE: ${OIDC_AUDIENCE:-justiceflow-api}
+      JUSTICEFLOW_OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://identity:8080/realms/justiceflow/protocol/openid-connect/certs}
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:
+      identity:
+        condition: service_healthy
       database:
         condition: service_healthy
       migrate:
@@ -71,6 +96,8 @@ services:
       context: ./web
       args:
         NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_OIDC_AUTHORITY: ${PUBLIC_OIDC_AUTHORITY:-http://localhost:8080/realms/justiceflow}
+        NEXT_PUBLIC_OIDC_CLIENT_ID: ${PUBLIC_OIDC_CLIENT_ID:-justiceflow-web}
     depends_on:
       api:
         condition: service_healthy

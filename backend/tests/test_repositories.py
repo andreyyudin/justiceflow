@@ -24,10 +24,9 @@ async def test_decision_repository_commits_and_returns_audit_record() -> None:
         case_id="case-1027",
         outcome=Priority.standard,
         reason="The source evidence was reviewed by the caseworker.",
-        reviewer="Test reviewer",
     )
 
-    decision = await repository.add(request)
+    decision = await repository.add(request, reviewer="Test reviewer")
 
     session.add.assert_called_once()
     session.commit.assert_awaited_once()

@@ -27,6 +27,8 @@ JusticeFlow does not predict offending, guilt, legal outcomes, sentence, or indi
 - Versioned synthetic evaluation scenarios
 - Structured JSON logs, request correlation IDs, and latency measurement
 - Optional privacy-safe Langfuse generation tracing and quality scores
+- OpenID Connect Authorization Code with PKCE and signed JWT validation
+- Caseworker and auditor roles with server-derived reviewer identity
 - Multi-stage, non-root Docker images
 - Health-checked Docker Compose orchestration
 - Reviewable Azure infrastructure using Terraform and AzureRM
@@ -53,6 +55,8 @@ Auditable human decisions
 
 FastAPI owns all domain rules and AI orchestration. The browser never calls the model directly. The application sends only synthetic case data to the configured local model.
 
+Authentication follows one production-shaped path in every environment. The browser uses OpenID Connect Authorization Code with PKCE, the API validates RS256 signatures through JWKS, and issuer, audience, expiry, subject, and role claims are mandatory. Local Docker Compose runs Keycloak as the identity provider; deployment supplies an approved OIDC authority such as Microsoft Entra ID without changing application authorization logic.
+
 The reviewable Azure target maps this architecture to Azure Container Apps, Azure Container Registry, Azure Database for PostgreSQL, Key Vault, managed identity, and Log Analytics. It is validated without running a plan or applying resources to the currently authenticated organisation subscription.
 
 ## Responsible AI controls
@@ -60,6 +64,24 @@ The reviewable Azure target maps this architecture to Azure Container Apps, Azur
 ### Human control
 
 Every model result has `requires_human_review=true`. A recommendation does not update operational state without an explicit human decision and reviewer identity.
+
+### Authentication and least privilege
+
+The local stack runs Keycloak 26.8.0 and imports `local/keycloak/justiceflow-realm.json`. This is not an authentication bypass: the browser completes Authorization Code with PKCE and sends a bearer access token to every protected API endpoint.
+
+Two realm roles demonstrate least privilege:
+
+- `caseworker` can view cases, request advisory triage, and record human decisions
+- `auditor` can view cases but cannot invoke triage or record decisions
+
+Reviewer identity is derived from validated token claims and is not accepted in decision JSON. The API rejects missing, malformed, expired, wrong-issuer, wrong-audience, and invalid-role tokens.
+
+Local synthetic users are defined in the imported realm:
+
+- `caseworker` with password `local-caseworker-password`
+- `auditor` with password `local-auditor-password`
+
+These credentials are local development fixtures only. Production uses an approved OIDC tenant, HTTPS issuer and JWKS endpoints, managed user lifecycle, conditional access, and deployment-specific client registration.
 
 ### Deterministic safety floors
 
@@ -116,7 +138,7 @@ ollama pull qwen3:4b
 cp .env.example .env
 ```
 
-Replace `POSTGRES_PASSWORD` with a long random local password. The `.env` file is ignored by Git.
+Replace `POSTGRES_PASSWORD` and `KEYCLOAK_ADMIN_PASSWORD` with long random local passwords. The `.env` file is ignored by Git. The imported caseworker and auditor accounts are synthetic local fixtures used to exercise the real OIDC flow.
 
 ### 3. Start the production-style stack
 
@@ -124,7 +146,7 @@ Replace `POSTGRES_PASSWORD` with a long random local password. The `.env` file i
 docker compose up --build
 ```
 
-The migration service waits for PostgreSQL readiness and applies Alembic migrations before the API starts. The web service waits for the API health check.
+The identity service imports the local Keycloak realm and must become healthy before the API starts. The migration service waits for PostgreSQL readiness and applies Alembic migrations before the API starts. The web service waits for the API health check.
 
 Open the caseworker interface on port 3000. The FastAPI OpenAPI documentation is available on port 8000 under `/docs`.
 
@@ -159,7 +181,7 @@ npm ci
 npm run dev
 ```
 
-This mode expects PostgreSQL at the configured `JUSTICEFLOW_DATABASE_URL` and Ollama at the configured `JUSTICEFLOW_OLLAMA_URL`.
+This mode expects PostgreSQL at the configured `JUSTICEFLOW_DATABASE_URL`, Ollama at `JUSTICEFLOW_OLLAMA_URL`, and an OIDC provider matching `JUSTICEFLOW_OIDC_ISSUER`, `JUSTICEFLOW_OIDC_AUDIENCE`, and `JUSTICEFLOW_OIDC_JWKS_URL`. Running Keycloak through Docker Compose while starting the API and web processes natively preserves the same authentication flow.
 
 ## Quality checks
 
@@ -239,12 +261,13 @@ Leaving either key blank keeps tracing disabled and does not affect local operat
 
 ```text
 backend/
-  app/               FastAPI, domain rules, persistence, and Langfuse observability
+  app/               FastAPI, OIDC authorization, persistence, and observability
   evals/             Versioned synthetic evaluation scenarios
   migrations/        Alembic database migrations
   tests/             Unit and API tests
 web/
-  src/app/           Next.js caseworker interface
+  src/app/           Next.js caseworker interface and OIDC PKCE client
+local/keycloak/       Reproducible local identity-provider realm
 infra/               Validated AzureRM Terraform target
 compose.yaml         Production-style local orchestration
 ```
@@ -275,10 +298,11 @@ No Terraform plan or apply was run against the authenticated organisation subscr
 The local deployment is designed to make the next production steps explicit:
 
 - replace local Ollama with an approved, private model endpoint through the existing provider boundary
-- harden the validated Azure target with private networking and Entra ID
+- register the existing OIDC client and API audience in the approved Entra ID tenant
+- harden the validated Azure target with private networking
 - deploy immutable digest-pinned images through an approved sandbox pipeline
 - route privacy-safe Langfuse telemetry to the organisation's approved observability platform
-- add authentication, authorisation, retention, redaction, and information-governance controls
+- add retention, redaction, and information-governance controls
 - run user research and accessibility testing with frontline staff
 - establish model and rule change approval, rollback, incident, and monitoring processes
 

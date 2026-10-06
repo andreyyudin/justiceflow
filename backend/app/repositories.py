@@ -10,12 +10,12 @@ class DecisionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def add(self, request: DecisionRequest) -> Decision:
+    async def add(self, request: DecisionRequest, *, reviewer: str) -> Decision:
         record = DecisionRecord(
             case_id=request.case_id,
             outcome=request.outcome.value,
             reason=request.reason,
-            reviewer=request.reviewer,
+            reviewer=reviewer,
         )
         self._session.add(record)
         await self._session.commit()

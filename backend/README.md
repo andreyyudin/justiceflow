@@ -1,6 +1,6 @@
 # JusticeFlow API
 
-The FastAPI service owns JusticeFlow domain rules, local-model orchestration, persistence, evaluation, structured logging, and privacy-safe Langfuse tracing.
+The FastAPI service owns JusticeFlow domain rules, OIDC bearer-token validation, role authorization, local-model orchestration, persistence, evaluation, structured logging, and privacy-safe Langfuse tracing.
 
 ## Commands
 
@@ -15,3 +15,9 @@ uv run alembic upgrade head --sql
 ```
 
 Runtime configuration uses environment variables prefixed with `JUSTICEFLOW_`. See the repository `.env.example` for the supported deployment values.
+
+## Authentication
+
+Protected routes require an RS256 bearer access token. The API resolves signing keys from `JUSTICEFLOW_OIDC_JWKS_URL` and validates the configured issuer and audience before deriving the caseworker or auditor role. Reviewer names come from validated token claims rather than request JSON.
+
+Docker Compose provides Keycloak locally so development exercises the same browser PKCE and API JWT flow used by a deployed OIDC provider.

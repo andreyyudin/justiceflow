@@ -1,9 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type User, type UserManager } from "oidc-client-ts";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  bearerHeaders,
+  createUserManager,
+  loadAuthenticatedUser,
+} from "./oidc";
 
 type Priority = "urgent" | "high" | "standard";
 type CaseStatus = "needs_review" | "approved" | "escalated";
+type Role = "caseworker" | "auditor";
+
+type Identity = {
+  subject: string;
+  display_name: string;
+  role: Role;
+};
 
 type Case = {
   id: string;
@@ -40,6 +54,9 @@ function priorityStyle(priority: Priority) {
 }
 
 export default function Home() {
+  const userManager = useRef<UserManager | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [identity, setIdentity] = useState<Identity | null>(null);
   const [cases, setCases] = useState<Case[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [triage, setTriage] = useState<TriageResult | null>(null);
@@ -48,18 +65,49 @@ export default function Home() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    fetch(`${API_URL}/api/cases`)
-      .then((response) => {
-        if (!response.ok) throw new Error("API unavailable");
-        return response.json() as Promise<Case[]>;
+    const manager = createUserManager();
+    userManager.current = manager;
+
+    loadAuthenticatedUser(manager)
+      .then(async (authenticatedUser) => {
+        if (!authenticatedUser || authenticatedUser.expired) {
+          setLoading(false);
+          return;
+        }
+
+        setUser(authenticatedUser);
+        const headers = bearerHeaders(authenticatedUser.access_token);
+        const [identityResponse, casesResponse] = await Promise.all([
+          fetch(`${API_URL}/api/identity`, { headers }),
+          fetch(`${API_URL}/api/cases`, { headers }),
+        ]);
+        if (!identityResponse.ok || !casesResponse.ok) {
+          throw new Error("Authenticated API request failed");
+        }
+
+        const currentIdentity = (await identityResponse.json()) as Identity;
+        const queue = (await casesResponse.json()) as Case[];
+        setIdentity(currentIdentity);
+        setCases(queue);
+        setSelectedId(queue[0]?.id ?? "");
       })
-      .then((data) => {
-        setCases(data);
-        setSelectedId(data[0]?.id ?? "");
+      .catch((error: unknown) => {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Authentication failed.",
+        );
       })
-      .catch(() => setMessage("FastAPI is unavailable. Start the API on port 8000."))
       .finally(() => setLoading(false));
   }, []);
+
+  async function signIn() {
+    await userManager.current?.signinRedirect();
+  }
+
+  async function signOut() {
+    await userManager.current?.signoutRedirect();
+  }
 
   const selected = useMemo(
     () => cases.find((item) => item.id === selectedId),
@@ -67,14 +115,15 @@ export default function Home() {
   );
 
   async function runTriage() {
-    if (!selected) return;
+    if (!selected || identity?.role !== "caseworker") return;
     setAiLoading(true);
     setMessage("");
     setTriage(null);
     try {
+      if (!user) return;
       const response = await fetch(`${API_URL}/api/triage`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: bearerHeaders(user.access_token, true),
         body: JSON.stringify({ case_id: selected.id }),
       });
       const body = await response.json();
@@ -88,18 +137,45 @@ export default function Home() {
   }
 
   async function recordDecision() {
-    if (!selected || !triage) return;
+    if (!selected || !triage || identity?.role !== "caseworker" || !user) return;
     const response = await fetch(`${API_URL}/api/decisions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: bearerHeaders(user.access_token, true),
       body: JSON.stringify({
         case_id: selected.id,
         outcome: triage.recommendation,
         reason: "Reviewed the source evidence and accepted the advisory queue priority.",
-        reviewer: "Demo caseworker",
       }),
     });
     if (response.ok) setMessage("Decision recorded with a human audit trail.");
+  }
+
+  if (!loading && !identity) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#f3f4f0] px-6 text-[#18201c]">
+        <section className="w-full max-w-md rounded-lg border border-[#cbd1c8] bg-white p-8 shadow-sm">
+          <div className="mb-6 grid size-12 place-items-center bg-[#d2e65b] font-bold text-[#17251d]">
+            JF
+          </div>
+          <h1 className="text-2xl font-semibold">Sign in to JusticeFlow</h1>
+          <p className="mt-3 text-sm leading-6 text-[#5f6962]">
+            Use the same OpenID Connect and role-based access flow locally and
+            in deployed environments.
+          </p>
+          <button
+            onClick={signIn}
+            className="mt-6 w-full rounded-md bg-[#253e2e] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1c3023]"
+          >
+            Sign in
+          </button>
+          {message && (
+            <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">
+              {message}
+            </p>
+          )}
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -115,9 +191,23 @@ export default function Home() {
               <p className="text-xs text-[#c8d3cc]">Casework operations workspace</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 text-sm">
-            <span className="size-2 rounded-full bg-[#d2e65b]" />
-            Local AI · Human controlled
+          <div className="flex items-center gap-4 text-right text-sm">
+            <div>
+              <p className="font-semibold">
+                {identity?.display_name ?? "Loading identity…"}
+              </p>
+              <p className="text-xs capitalize text-[#c8d3cc]">
+                {identity?.role ?? "unknown"} · Local AI
+              </p>
+            </div>
+            {identity && (
+              <button
+                onClick={signOut}
+                className="rounded border border-[#708078] px-3 py-1.5 text-xs font-semibold hover:bg-[#25382d]"
+              >
+                Sign out
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -226,10 +316,14 @@ export default function Home() {
                 </div>
                 <button
                   onClick={runTriage}
-                  disabled={aiLoading}
-                  className="w-full rounded-md bg-[#253e2e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1c3023] disabled:opacity-60"
+                  disabled={aiLoading || identity?.role !== "caseworker"}
+                  className="w-full rounded-md bg-[#253e2e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1c3023] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {aiLoading ? "Running local model…" : "Generate AI recommendation"}
+                  {identity?.role === "auditor"
+                    ? "Auditor access is read-only"
+                    : aiLoading
+                      ? "Running local model…"
+                      : "Generate AI recommendation"}
                 </button>
 
                 {triage && (
@@ -256,7 +350,8 @@ export default function Home() {
                     </div>
                     <button
                       onClick={recordDecision}
-                      className="w-full rounded-md border border-[#253e2e] bg-white px-4 py-2 text-sm font-semibold text-[#253e2e] hover:bg-[#f0f4e1]"
+                      disabled={identity?.role !== "caseworker"}
+                      className="w-full rounded-md border border-[#253e2e] bg-white px-4 py-2 text-sm font-semibold text-[#253e2e] hover:bg-[#f0f4e1] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Accept after human review
                     </button>

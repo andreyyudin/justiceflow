@@ -1,0 +1,105 @@
+{
+  "realm": "justiceflow",
+  "enabled": true,
+  "displayName": "JusticeFlow",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "caseworker",
+        "description": "Can view cases, request advisory triage, and record human decisions."
+      },
+      {
+        "name": "auditor",
+        "description": "Can view synthetic cases but cannot invoke triage or record decisions."
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "justiceflow-api",
+      "name": "JusticeFlow API",
+      "enabled": true,
+      "bearerOnly": true,
+      "publicClient": false,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "justiceflow-web",
+      "name": "JusticeFlow browser",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "justiceflow-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "justiceflow-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "caseworker",
+      "enabled": true,
+      "firstName": "Casey",
+      "lastName": "Worker",
+      "email": "caseworker@justiceflow.local",
+      "emailVerified": true,
+      "realmRoles": [
+        "caseworker"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local-caseworker-password",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "auditor",
+      "enabled": true,
+      "firstName": "Avery",
+      "lastName": "Auditor",
+      "email": "auditor@justiceflow.local",
+      "emailVerified": true,
+      "realmRoles": [
+        "auditor"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local-auditor-password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

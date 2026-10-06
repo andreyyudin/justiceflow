@@ -88,3 +88,35 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "oidc_issuer" {
+  description = "Public OIDC issuer used to validate API access tokens."
+  type        = string
+
+  validation {
+    condition     = can(regex("^https://", var.oidc_issuer))
+    error_message = "Production OIDC issuer must use HTTPS."
+  }
+}
+
+variable "oidc_audience" {
+  description = "Audience required in JusticeFlow API access tokens."
+  type        = string
+  default     = "justiceflow-api"
+}
+
+variable "oidc_jwks_url" {
+  description = "OIDC JSON Web Key Set endpoint used by the API."
+  type        = string
+
+  validation {
+    condition     = can(regex("^https://", var.oidc_jwks_url))
+    error_message = "Production JWKS URL must use HTTPS."
+  }
+}
+
+variable "web_oidc_client_id" {
+  description = "Public OIDC client identifier embedded in the web image."
+  type        = string
+  default     = "justiceflow-web"
+}

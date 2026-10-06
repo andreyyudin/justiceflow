@@ -7,6 +7,13 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .auth import (
+    Identity,
+    OidcTokenValidator,
+    Role,
+    authorize,
+    create_identity_dependency,
+)
 from .cases import CASES, get_case
 from .database import create_engine, create_session_factory, session_scope
 from .llm_observability import create_llm_telemetry
@@ -31,6 +38,9 @@ class Settings(BaseSettings):
     langfuse_base_url: str | None = None
     langfuse_environment: str = "local"
     release: str = "development"
+    oidc_issuer: str = "http://localhost:8080/realms/justiceflow"
+    oidc_audience: str = "justiceflow-api"
+    oidc_jwks_url: str = "http://localhost:8080/realms/justiceflow/protocol/openid-connect/certs"
 
 
 settings = Settings()
@@ -58,6 +68,14 @@ DecisionRepositoryDependency = Annotated[
     Depends(get_decision_repository),
 ]
 
+oidc_validator = OidcTokenValidator(
+    issuer=settings.oidc_issuer,
+    audience=settings.oidc_audience,
+    jwks_url=settings.oidc_jwks_url,
+)
+get_identity = create_identity_dependency(oidc_validator)
+IdentityDependency = Annotated[Identity, Depends(get_identity)]
+
 
 app = FastAPI(
     title="JusticeFlow API",
@@ -69,7 +87,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+    ],
 )
 
 
@@ -78,8 +99,14 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "model": settings.ollama_model}
 
 
+@app.get("/api/identity")
+async def current_identity(identity: IdentityDependency) -> Identity:
+    return identity
+
+
 @app.get("/api/cases")
-async def list_cases() -> list[Case]:
+async def list_cases(identity: IdentityDependency) -> list[Case]:
+    authorize(identity, Role.caseworker, Role.auditor)
     return CASES
 
 
@@ -90,7 +117,11 @@ async def list_cases() -> list[Case]:
         503: {"description": "Local AI provider unavailable"},
     },
 )
-async def triage_case(request: TriageRequest) -> TriageResult:
+async def triage_case(
+    request: TriageRequest,
+    identity: IdentityDependency,
+) -> TriageResult:
+    authorize(identity, Role.caseworker)
     case = get_case(request.case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -122,6 +153,8 @@ async def triage_case(request: TriageRequest) -> TriageResult:
         recommendation=result.recommendation,
         model=result.model,
         latency_ms=result.latency_ms,
+        actor_subject=identity.subject,
+        actor_role=identity.role,
     )
     return result
 
@@ -134,14 +167,21 @@ async def triage_case(request: TriageRequest) -> TriageResult:
 async def record_decision(
     request: DecisionRequest,
     repository: DecisionRepositoryDependency,
+    identity: IdentityDependency,
 ) -> Decision:
+    authorize(identity, Role.caseworker)
     if get_case(request.case_id) is None:
         raise HTTPException(status_code=404, detail="Case not found")
-    decision = await repository.add(request)
+    decision = await repository.add(
+        request,
+        reviewer=identity.display_name,
+    )
     logger.info(
         "human_decision_recorded",
         case_id=decision.case_id,
         outcome=decision.outcome,
         reviewer=decision.reviewer,
+        actor_subject=identity.subject,
+        actor_role=identity.role,
     )
     return decision

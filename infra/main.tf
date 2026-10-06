@@ -239,6 +239,21 @@ resource "azurerm_container_app" "api" {
         value = "azure-${var.environment}"
       }
 
+      env {
+        name  = "JUSTICEFLOW_OIDC_ISSUER"
+        value = var.oidc_issuer
+      }
+
+      env {
+        name  = "JUSTICEFLOW_OIDC_AUDIENCE"
+        value = var.oidc_audience
+      }
+
+      env {
+        name  = "JUSTICEFLOW_OIDC_JWKS_URL"
+        value = var.oidc_jwks_url
+      }
+
       dynamic "env" {
         for_each = var.langfuse_public_key == "" ? [] : [1]
         content {
