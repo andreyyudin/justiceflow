@@ -31,7 +31,7 @@ from .schemas import (
     TriageRequest,
     TriageResult,
 )
-from .triage import OllamaClient
+from .triage import ModelOutputSafetyError, OllamaClient
 
 logger = structlog.get_logger()
 
@@ -181,6 +181,16 @@ async def triage_case(
     )
     try:
         result = await client.triage(case)
+    except ModelOutputSafetyError as exc:
+        logger.warning(
+            "triage_output_rejected",
+            case_id=case.id,
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=("Local AI returned an invalid response. No recommendation was recorded."),
+        ) from exc
     except (httpx.HTTPError, KeyError, ValueError) as exc:
         logger.warning(
             "triage_provider_failed",

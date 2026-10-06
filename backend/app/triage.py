@@ -25,6 +25,15 @@ The recommendation is advisory and always requires human review."""
 
 HIGH_RISK_FLAGS = {"accessibility", "hearing_deadline", "housing_instability"}
 URGENT_FLAGS = {"hearing_deadline"}
+PROHIBITED_RATIONALE_PHRASES = (
+    "guilty finding",
+    "legal outcome",
+    "risk of offending",
+)
+
+
+class ModelOutputSafetyError(ValueError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -88,6 +97,7 @@ class OllamaClient:
             response_body = response.json()
             content = response_body["message"]["content"]
             parsed = ModelTriageOutput.model_validate_json(content)
+            validate_model_rationale(parsed.rationale)
             recommendation = apply_safety_floor(case, parsed.recommendation)
             latency_ms = round((time.perf_counter() - started) * 1000)
             result = GeneratedRecommendation(
@@ -118,6 +128,15 @@ class OllamaClient:
                 completion_tokens=int(response_body.get("eval_count", 0)),
             )
         return result
+
+
+def validate_model_rationale(rationale: str) -> None:
+    normalized = rationale.casefold()
+    matched = tuple(
+        phrase for phrase in PROHIBITED_RATIONALE_PHRASES if phrase.casefold() in normalized
+    )
+    if matched:
+        raise ModelOutputSafetyError("Model rationale contained prohibited content.")
 
 
 def apply_safety_floor(case: Case, recommendation: Priority) -> Priority:

@@ -1,5 +1,5 @@
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
@@ -209,3 +209,57 @@ async def test_adversarial_case_text_remains_untrusted_data() -> None:
     assert result.recommendation == Priority.standard
     assert result.evidence == [f"Source summary: {adversarial_summary}"]
     assert result.model_confidence == 0.5
+
+
+@pytest.mark.asyncio
+async def test_prohibited_model_rationale_is_rejected_and_telemetry_fails() -> None:
+    case = get_case("case-1027")
+    assert case is not None
+
+    prohibited_rationale = (
+        "The case requires an urgent guilty finding despite the routine source data."
+    )
+    request = httpx.Request("POST", "http://ollama.test/api/chat")
+    response = httpx.Response(
+        200,
+        request=request,
+        json={
+            "message": {
+                "content": json.dumps(
+                    {
+                        "recommendation": "urgent",
+                        "rationale": prohibited_rationale,
+                        "evidence": ["summary"],
+                        "confidence": 0.9,
+                    }
+                )
+            }
+        },
+    )
+    post = AsyncMock(return_value=response)
+    generation = Mock()
+    telemetry = Mock()
+    telemetry.start_generation.return_value = generation
+    client = OllamaClient(
+        "http://ollama.test",
+        "qwen3:4b",
+        120.0,
+        telemetry,
+    )
+
+    with patch.object(httpx.AsyncClient, "post", post):
+        with pytest.raises(
+            ValueError,
+            match="Model rationale contained prohibited content.",
+        ):
+            await client.triage(case)
+
+    generation.fail.assert_called_once()
+    failure = generation.fail.call_args.kwargs
+    assert failure["error_type"] == "ModelOutputSafetyError"
+    assert isinstance(failure["latency_ms"], int)
+    generation.succeed.assert_not_called()
+
+    telemetry_payload = repr(telemetry.mock_calls) + repr(generation.mock_calls)
+    assert prohibited_rationale not in telemetry_payload
+    assert case.summary not in telemetry_payload

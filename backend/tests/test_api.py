@@ -15,7 +15,7 @@ from app.schemas import (
     Priority,
     Recommendation,
 )
-from app.triage import GeneratedRecommendation
+from app.triage import GeneratedRecommendation, ModelOutputSafetyError
 
 client = TestClient(app)
 
@@ -559,3 +559,29 @@ def test_decision_history_requires_authentication() -> None:
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
     assert response.json() == {"detail": "Bearer token is required."}
+
+
+def test_prohibited_model_output_is_rejected_without_persistence() -> None:
+    repository = AsyncMock(spec=DecisionRepository)
+    app.dependency_overrides[get_decision_repository] = repository_override(repository)
+    app.dependency_overrides[get_identity] = identity_override(CASEWORKER)
+
+    try:
+        with patch(
+            "app.main.OllamaClient.triage",
+            AsyncMock(
+                side_effect=ModelOutputSafetyError("Model rationale contained prohibited content.")
+            ),
+        ):
+            response = client.post(
+                "/api/triage",
+                json={"case_id": "case-1027"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": ("Local AI returned an invalid response. No recommendation was recorded.")
+    }
+    repository.add_recommendation.assert_not_awaited()
