@@ -226,6 +226,11 @@ resource "azurerm_container_app" "api" {
       }
 
       env {
+        name  = "JUSTICEFLOW_ALLOWED_ORIGINS"
+        value = "https://${azurerm_container_app.web.ingress[0].fqdn}"
+      }
+
+      env {
         name  = "JUSTICEFLOW_OLLAMA_URL"
         value = var.ollama_url
       }
