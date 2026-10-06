@@ -1,6 +1,6 @@
 # JusticeFlow
 
-JusticeFlow is a production-oriented, human-in-the-loop casework triage application built with synthetic data. It demonstrates how AI can support justice caseworkers with explainable queue-priority recommendations while preserving human judgement, auditability, and operational control.
+JusticeFlow is a local-first, human-in-the-loop casework triage application built with synthetic data. It demonstrates a bounded workflow in which AI proposes a queue priority, deterministic rules enforce minimum priorities, and a named caseworker records the final decision.
 
 Licensed under the MIT License. Contributions are welcome through focused pull requests that preserve the project's security, accessibility, and responsible-AI boundaries. See `CONTRIBUTING.md` and `SECURITY.md`.
 
@@ -19,16 +19,16 @@ JusticeFlow does not predict offending, guilt, legal outcomes, sentence, or indi
 
 ## What this demonstrates
 
-- A production-style AI product owned across frontend, backend, database, model integration, evaluation, observability, and deployment
+- An end-to-end AI-assisted workflow spanning frontend, backend, database, model integration, deterministic safeguard regression, observability, and deployment configuration
 - Next.js 16 and React 19 for an operational caseworker interface
 - FastAPI with typed request and response contracts
 - Async SQLAlchemy and PostgreSQL persistence
 - Alembic database migrations
 - A local Ollama-compatible LLM integration
 - Deterministic safeguards around probabilistic model output
-- Versioned synthetic evaluation scenarios
+- Versioned synthetic safety-floor regression scenarios
 - Structured JSON logs, request correlation IDs, and latency measurement
-- Optional privacy-safe Langfuse generation tracing and quality scores
+- Optional privacy-safe Langfuse generation tracing with operational generation metrics
 - OpenID Connect Authorization Code with PKCE and signed JWT validation
 - Caseworker and auditor roles with server-derived reviewer identity
 - Real-browser OIDC journeys and automated WCAG A/AA accessibility scans
@@ -101,18 +101,20 @@ The model can return only one of three queue priorities. The system prompt prohi
 
 ### Synthetic data
 
-All included cases and evaluation scenarios are fictional. No operational or personal justice data is included.
+All included cases and safeguard scenarios are fictional. No operational or personal justice data is included.
 
-### Evaluation
+### Deterministic safeguard regression
 
-The offline evaluation suite is deterministic and does not require a running model:
+The offline safeguard regression is deterministic and does not require a running model:
 
 ```sh
 cd backend
 uv run python -m evals.run
 ```
 
-The suite fails unless every versioned scenario passes. It currently covers deadline escalation, accessibility and housing safeguards, routine requests, and valid high-priority recommendations.
+Each versioned scenario supplies a synthetic case and a preselected recommendation, then verifies the priority produced by the application-owned safety floor. The command fails unless every scenario passes. It currently covers deadline escalation, accessibility and housing safeguards, routine requests, and preservation of a valid high-priority recommendation.
+
+This suite does not invoke the configured model and is not a model-quality evaluation. It does not measure recommendation accuracy, rationale quality, evidence grounding, output-schema reliability, prompt-injection resilience, or confidence calibration. Strict output validation and grounded-evidence behaviour are covered separately by backend tests, while the real local model is exercised manually through the browser workflow.
 
 ### Browser accessibility and authentication journeys
 
@@ -156,7 +158,7 @@ cp .env.example .env
 
 Replace `POSTGRES_PASSWORD` and `KEYCLOAK_ADMIN_PASSWORD` with long random local passwords. The `.env` file is ignored by Git. The imported caseworker and auditor accounts are synthetic local fixtures used to exercise the real OIDC flow.
 
-### 3. Start the production-style stack
+### 3. Start the local production-mode stack
 
 ```sh
 docker compose up --build
@@ -273,8 +275,7 @@ generation observation containing:
 
 - model name and bounded inference parameters
 - token usage and latency
-- final queue recommendation and confidence
-- schema-validation score
+- final queue recommendation and model-reported confidence for operational diagnosis
 - failure type for unsuccessful generations
 - synthetic-data and mandatory-human-review markers
 
@@ -299,14 +300,14 @@ Leaving either key blank keeps tracing disabled and does not affect local operat
 ```text
 backend/
   app/               FastAPI, OIDC authorization, persistence, and observability
-  evals/             Versioned synthetic evaluation scenarios
+  evals/             Versioned deterministic safety-floor regression scenarios
   migrations/        Alembic database migrations
   tests/             Unit and API tests
 web/
   src/app/           Next.js caseworker interface and OIDC PKCE client
 local/keycloak/       Reproducible local identity-provider realm
 infra/               Validated AzureRM Terraform target
-compose.yaml         Production-style local orchestration
+compose.yaml         Local production-mode orchestration
 ```
 
 ## Azure and Terraform target
@@ -343,4 +344,4 @@ The local deployment is designed to make the next production steps explicit:
 - run manual accessibility testing and user research with frontline staff
 - establish model and rule change approval, rollback, incident, and monitoring processes
 
-The local implementation is not presented as ready for real justice data. It is a production-shaped technical demonstration with the important safety and operational boundaries made explicit.
+The local implementation is not ready for real justice data. It is a bounded technical demonstration with explicit safety and operational controls, but it still requires genuine model-quality evaluation, information-governance controls, private networking, deployment hardening, user research, and organisational approval before production use.

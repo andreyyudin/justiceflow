@@ -27,8 +27,8 @@ async def test_telemetry_receives_metrics_but_not_case_text() -> None:
                 "content": json.dumps(
                     {
                         "recommendation": "urgent",
-                        "rationale": "Synthetic rationale that must not reach telemetry.",
-                        "evidence": ["Synthetic evidence that must not reach telemetry."],
+                        "rationale": ("Synthetic rationale that must not reach telemetry."),
+                        "evidence": ["summary", "risk_flags"],
                         "confidence": 0.95,
                     }
                 )

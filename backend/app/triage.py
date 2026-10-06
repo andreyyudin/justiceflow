@@ -1,22 +1,39 @@
 import json
 import time
 from dataclasses import dataclass
-from typing import Any
 
 import httpx
 
 from .llm_observability import LlmTelemetry
-from .schemas import Case, Priority, TriageResult
+from .schemas import (
+    Case,
+    EvidenceSource,
+    ModelTriageOutput,
+    Priority,
+)
 
 SYSTEM_PROMPT = """You support a human justice caseworker.
 Recommend only a queue priority: urgent, high, or standard.
 Base the recommendation exclusively on the supplied synthetic case.
 Never infer protected characteristics, guilt, risk of offending, or legal outcomes.
 Return JSON with recommendation, rationale, evidence, and confidence.
+Evidence must contain one or more source-field names chosen only from:
+summary, service, days_waiting, risk_flags.
 The recommendation is advisory and always requires human review."""
 
 HIGH_RISK_FLAGS = {"accessibility", "hearing_deadline", "housing_instability"}
 URGENT_FLAGS = {"hearing_deadline"}
+
+
+@dataclass(frozen=True)
+class GeneratedRecommendation:
+    case_id: str
+    recommendation: Priority
+    rationale: str
+    evidence: list[str]
+    model: str
+    model_confidence: float
+    latency_ms: int
 
 
 @dataclass(frozen=True)
@@ -26,7 +43,7 @@ class OllamaClient:
     timeout_seconds: float = 45.0
     telemetry: LlmTelemetry | None = None
 
-    async def triage(self, case: Case) -> TriageResult:
+    async def triage(self, case: Case) -> GeneratedRecommendation:
         started = time.perf_counter()
         generation = (
             self.telemetry.start_generation(
@@ -68,19 +85,18 @@ class OllamaClient:
                 response.raise_for_status()
             response_body = response.json()
             content = response_body["message"]["content"]
-            parsed: dict[str, Any] = json.loads(content)
-            recommendation = Priority(parsed["recommendation"])
-            recommendation = apply_safety_floor(case, recommendation)
+            parsed = ModelTriageOutput.model_validate_json(content)
+            recommendation = apply_safety_floor(case, parsed.recommendation)
             latency_ms = round((time.perf_counter() - started) * 1000)
-            confidence = float(parsed["confidence"])
-            result = TriageResult(
+            result = GeneratedRecommendation(
                 case_id=case.id,
                 recommendation=recommendation,
-                rationale=str(parsed["rationale"]),
-                evidence=[str(item) for item in parsed.get("evidence", [])][:4],
-                confidence=confidence,
-                requires_human_review=True,
+                rationale=parsed.rationale,
+                evidence=[
+                    render_evidence(case, source) for source in dict.fromkeys(parsed.evidence)
+                ],
                 model=self.model,
+                model_confidence=parsed.confidence,
                 latency_ms=latency_ms,
             )
         except Exception as exc:
@@ -94,7 +110,7 @@ class OllamaClient:
         if generation:
             generation.succeed(
                 recommendation=recommendation.value,
-                confidence=confidence,
+                confidence=parsed.confidence,
                 latency_ms=latency_ms,
                 prompt_tokens=int(response_body.get("prompt_eval_count", 0)),
                 completion_tokens=int(response_body.get("eval_count", 0)),
@@ -109,3 +125,16 @@ def apply_safety_floor(case: Case, recommendation: Priority) -> Priority:
     if flags & HIGH_RISK_FLAGS and recommendation == Priority.standard:
         return Priority.high
     return recommendation
+
+
+def render_evidence(case: Case, source: EvidenceSource) -> str:
+    if source == EvidenceSource.summary:
+        return f"Source summary: {case.summary}"
+    if source == EvidenceSource.service:
+        return f"Service: {case.service}"
+    if source == EvidenceSource.days_waiting:
+        return f"Waiting time: {case.days_waiting} days"
+    if case.risk_flags:
+        flags = ", ".join(flag.replace("_", " ") for flag in case.risk_flags)
+        return f"Recorded operational flags: {flags}"
+    return "Recorded operational flags: none"

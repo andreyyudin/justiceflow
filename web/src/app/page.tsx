@@ -19,6 +19,13 @@ type Identity = {
   role: Role;
 };
 
+type LatestDecision = {
+  outcome: Priority;
+  reason: string;
+  reviewer: string;
+  recorded_at: string;
+};
+
 type Case = {
   id: string;
   reference: string;
@@ -30,17 +37,50 @@ type Case = {
   status: CaseStatus;
   risk_flags: string[];
   days_waiting: number;
+  latest_decision: LatestDecision | null;
 };
 
 type TriageResult = {
+  recommendation_id: string;
   case_id: string;
   recommendation: Priority;
   rationale: string;
   evidence: string[];
-  confidence: number;
   requires_human_review: boolean;
   model: string;
   latency_ms: number;
+};
+
+type Decision = {
+  case_id: string;
+  recommendation_id: string | null;
+  decision_type: "accepted" | "overridden" | "legacy";
+  outcome: Priority;
+  reason: string;
+  reviewer: string;
+  recorded_at: string;
+};
+
+type ObservabilityStatus = {
+  structured_logs: boolean;
+  langfuse_enabled: boolean;
+  environment: string;
+  release: string;
+};
+
+type DecisionAuditEntry = {
+  case_id: string;
+  recommendation_id: string | null;
+  decision_type: "accepted" | "overridden" | "legacy";
+  outcome: Priority;
+  reason: string;
+  reviewer: string;
+  recorded_at: string;
+  advisory_priority: Priority | null;
+  advisory_rationale: string | null;
+  advisory_evidence: string[];
+  model: string | null;
+  recommendation_created_at: string | null;
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -62,7 +102,16 @@ export default function Home() {
   const [triage, setTriage] = useState<TriageResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
+  const [decisionLoading, setDecisionLoading] = useState(false);
+  const [finalPriority, setFinalPriority] = useState<Priority>("standard");
+  const [decisionReason, setDecisionReason] = useState("");
+  const [recordedDecision, setRecordedDecision] = useState<Decision | null>(null);
+  const [observability, setObservability] = useState<ObservabilityStatus | null>(
+    null,
+  );
+  const [decisionHistory, setDecisionHistory] = useState<DecisionAuditEntry[]>([]);
   const [message, setMessage] = useState("");
+  const [messageKind, setMessageKind] = useState<"success" | "error">("success");
 
   useEffect(() => {
     const manager = createUserManager();
@@ -90,8 +139,25 @@ export default function Home() {
         setIdentity(currentIdentity);
         setCases(queue);
         setSelectedId(queue[0]?.id ?? "");
+
+        if (currentIdentity.role === "auditor") {
+          const [observabilityResponse, historyResponse] = await Promise.all([
+            fetch(`${API_URL}/api/observability`, { headers }),
+            fetch(`${API_URL}/api/decisions/history`, { headers }),
+          ]);
+          if (!observabilityResponse.ok || !historyResponse.ok) {
+            throw new Error("Auditor data request failed");
+          }
+          setObservability(
+            (await observabilityResponse.json()) as ObservabilityStatus,
+          );
+          setDecisionHistory(
+            (await historyResponse.json()) as DecisionAuditEntry[],
+          );
+        }
       })
       .catch((error: unknown) => {
+        setMessageKind("error");
         setMessage(
           error instanceof Error
             ? error.message
@@ -119,6 +185,7 @@ export default function Home() {
     setAiLoading(true);
     setMessage("");
     setTriage(null);
+    setRecordedDecision(null);
     try {
       if (!user) return;
       const response = await fetch(`${API_URL}/api/triage`, {
@@ -128,8 +195,12 @@ export default function Home() {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail ?? "Triage failed");
-      setTriage(body);
+      const result = body as TriageResult;
+      setTriage(result);
+      setFinalPriority(result.recommendation);
+      setDecisionReason("");
     } catch (error) {
+      setMessageKind("error");
       setMessage(error instanceof Error ? error.message : "Triage failed");
     } finally {
       setAiLoading(false);
@@ -137,17 +208,77 @@ export default function Home() {
   }
 
   async function recordDecision() {
-    if (!selected || !triage || identity?.role !== "caseworker" || !user) return;
-    const response = await fetch(`${API_URL}/api/decisions`, {
-      method: "POST",
-      headers: bearerHeaders(user.access_token, true),
-      body: JSON.stringify({
-        case_id: selected.id,
-        outcome: triage.recommendation,
-        reason: "Reviewed the source evidence and accepted the advisory queue priority.",
-      }),
-    });
-    if (response.ok) setMessage("Decision recorded with a human audit trail.");
+    if (
+      !selected ||
+      !triage ||
+      identity?.role !== "caseworker" ||
+      !user ||
+      decisionLoading ||
+      recordedDecision
+    ) {
+      return;
+    }
+
+    const reason = decisionReason.trim();
+    if (reason.length < 10) {
+      setMessageKind("error");
+      setMessage("Enter at least 10 characters explaining the human decision.");
+      return;
+    }
+
+    setDecisionLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${API_URL}/api/decisions`, {
+        method: "POST",
+        headers: bearerHeaders(user.access_token, true),
+        body: JSON.stringify({
+          case_id: selected.id,
+          recommendation_id: triage.recommendation_id,
+          outcome: finalPriority,
+          reason,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail ?? "Decision could not be recorded.");
+      }
+
+      const decision = body as Decision;
+      setRecordedDecision(decision);
+      setCases((currentCases) =>
+        currentCases.map((item) =>
+          item.id === decision.case_id
+            ? {
+                ...item,
+                priority: decision.outcome,
+                status: "approved",
+                latest_decision: {
+                  outcome: decision.outcome,
+                  reason: decision.reason,
+                  reviewer: decision.reviewer,
+                  recorded_at: decision.recorded_at,
+                },
+              }
+            : item,
+        ),
+      );
+      setMessageKind("success");
+      setMessage(
+        finalPriority === triage.recommendation
+          ? "Human decision recorded. The advisory recommendation was accepted."
+          : "Human decision recorded. The advisory recommendation was overridden.",
+      );
+    } catch (error) {
+      setMessageKind("error");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Decision could not be recorded.",
+      );
+    } finally {
+      setDecisionLoading(false);
+    }
   }
 
   if (!loading && !identity) {
@@ -234,6 +365,160 @@ export default function Home() {
           </div>
         </div>
 
+        {identity?.role === "auditor" && observability && (
+          <section
+            aria-labelledby="operational-observability-heading"
+            className="mb-5 rounded-lg border border-[#cbd1c8] bg-white p-5 shadow-sm"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#69756d]">
+                  Restricted operational view
+                </p>
+                <h2
+                  id="operational-observability-heading"
+                  className="mt-1 text-lg font-semibold"
+                >
+                  AI service observability
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-[#58645d]">
+                  Runtime status belongs outside the caseworker decision flow.
+                  Detailed traces are reviewed in the configured observability
+                  platform and correlated through request IDs in structured logs.
+                </p>
+              </div>
+              <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-800">
+                Auditor access
+              </span>
+            </div>
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+              <div className="rounded-md bg-[#f3f5f1] p-3">
+                <dt className="text-xs font-semibold uppercase text-[#58645d]">
+                  Structured logs
+                </dt>
+                <dd className="mt-1 font-semibold">
+                  {observability.structured_logs ? "Enabled" : "Unavailable"}
+                </dd>
+              </div>
+              <div className="rounded-md bg-[#f3f5f1] p-3">
+                <dt className="text-xs font-semibold uppercase text-[#58645d]">
+                  Trace export
+                </dt>
+                <dd className="mt-1 font-semibold">
+                  {observability.langfuse_enabled
+                    ? `Langfuse enabled · ${observability.environment}`
+                    : "Langfuse not configured"}
+                </dd>
+              </div>
+              <div className="rounded-md bg-[#f3f5f1] p-3">
+                <dt className="text-xs font-semibold uppercase text-[#58645d]">
+                  Release
+                </dt>
+                <dd className="mt-1 font-semibold">
+                  {observability.release}
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-4 text-xs leading-5 text-[#69756d]">
+              Prompts, case summaries, rationales, and evidence are deliberately
+              excluded from exported telemetry.
+            </p>
+          </section>
+        )}
+
+        {identity?.role === "auditor" && (
+          <section
+            aria-labelledby="decision-history-heading"
+            className="mb-5 overflow-hidden rounded-lg border border-[#cbd1c8] bg-white shadow-sm"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#dbe0d8] px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#69756d]">
+                  Append-only audit trail
+                </p>
+                <h2
+                  id="decision-history-heading"
+                  className="mt-1 text-lg font-semibold"
+                >
+                  Decision history
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-[#58645d]">
+                  Human outcomes appear newest first. Linked records preserve the
+                  advisory recommendation reviewed by the caseworker.
+                </p>
+              </div>
+              <span className="rounded-full border border-[#cbd1c8] bg-[#f3f5f1] px-3 py-1 text-xs font-semibold">
+                {decisionHistory.length} records
+              </span>
+            </div>
+            {decisionHistory.length ? (
+              <ol className="divide-y divide-[#e3e6e1]">
+                {decisionHistory.map((entry, index) => (
+                  <li
+                    key={`${entry.case_id}-${entry.recorded_at}-${index}`}
+                    className="grid gap-4 px-5 py-4 lg:grid-cols-[0.8fr_1.2fr]"
+                  >
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs font-semibold">
+                          {entry.case_id}
+                        </span>
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${priorityStyle(entry.outcome)}`}
+                        >
+                          {entry.outcome}
+                        </span>
+                        <span className="rounded-full border border-[#cbd1c8] bg-[#f3f5f1] px-2 py-0.5 text-[11px] font-semibold uppercase text-[#48534c]">
+                          {entry.decision_type}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-[#58645d]">
+                        {entry.reviewer} ·{" "}
+                        {new Date(entry.recorded_at).toLocaleString()}
+                      </p>
+                      <p className="mt-2 text-sm leading-6">{entry.reason}</p>
+                    </div>
+                    <div className="rounded-md bg-[#f7f8f5] p-3 text-xs">
+                      {entry.recommendation_id ? (
+                        <>
+                          <p className="font-semibold text-[#253e2e]">
+                            Reviewed recommendation
+                          </p>
+                          <p className="mt-1 leading-5">
+                            {entry.advisory_priority} · {entry.model}
+                          </p>
+                          <p className="mt-2 leading-5">
+                            {entry.advisory_rationale}
+                          </p>
+                          <ul className="mt-2 list-disc space-y-1 pl-5 text-[#58645d]">
+                            {entry.advisory_evidence.map((evidence) => (
+                              <li key={evidence}>{evidence}</li>
+                            ))}
+                          </ul>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-semibold text-[#48534c]">
+                            Legacy decision
+                          </p>
+                          <p className="mt-1 leading-5 text-[#58645d]">
+                            Recorded before recommendation provenance was
+                            introduced.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="px-5 py-6 text-sm text-[#68736c]">
+                No human decisions have been recorded.
+              </p>
+            )}
+          </section>
+        )}
+
         <section className="grid gap-5 lg:grid-cols-[1.4fr_0.9fr]">
           <div className="overflow-hidden rounded-lg border border-[#cbd1c8] bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-[#dbe0d8] px-5 py-4">
@@ -250,6 +535,8 @@ export default function Home() {
                     onClick={() => {
                       setSelectedId(item.id);
                       setTriage(null);
+                      setRecordedDecision(null);
+                      setDecisionReason("");
                       setMessage("");
                     }}
                     className={`grid w-full grid-cols-[1fr_auto] gap-4 px-5 py-4 text-left transition ${selectedId === item.id ? "bg-[#f4f7df]" : "hover:bg-[#f7f8f5]"
@@ -263,6 +550,11 @@ export default function Home() {
                         >
                           {item.priority}
                         </span>
+                        {item.latest_decision && (
+                          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold uppercase text-emerald-800">
+                            Human reviewed
+                          </span>
+                        )}
                       </div>
                       <p className="line-clamp-2 text-sm leading-6 text-[#39433d]">
                         {item.summary}
@@ -300,6 +592,32 @@ export default function Home() {
                   </p>
                   <p className="text-sm leading-6">{selected.summary}</p>
                 </div>
+
+                {selected.latest_decision && (
+                  <section
+                    aria-label="Latest human decision"
+                    className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-950"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold">Latest human decision</p>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${priorityStyle(selected.latest_decision.outcome)}`}
+                      >
+                        {selected.latest_decision.outcome}
+                      </span>
+                    </div>
+                    <p className="mt-2">
+                      {selected.latest_decision.reviewer} recorded this decision at{" "}
+                      {new Date(
+                        selected.latest_decision.recorded_at,
+                      ).toLocaleString()}.
+                    </p>
+                    <p className="mt-1 leading-5">
+                      {selected.latest_decision.reason}
+                    </p>
+                  </section>
+                )}
+
                 <div className="flex flex-wrap gap-2">
                   {selected.risk_flags.length ? (
                     selected.risk_flags.map((flag) => (
@@ -344,24 +662,132 @@ export default function Home() {
                         <li key={item}>{item}</li>
                       ))}
                     </ul>
-                    <div className="flex justify-between border-t border-[#dce2bd] pt-3 text-xs text-[#65705f]">
-                      <span>{Math.round(triage.confidence * 100)}% model confidence</span>
+                    <div className="border-t border-[#dce2bd] pt-3 text-xs text-[#65705f]">
                       <span>{triage.model} · {triage.latency_ms} ms</span>
                     </div>
-                    <button
-                      onClick={recordDecision}
-                      disabled={identity?.role !== "caseworker"}
-                      className="w-full rounded-md border border-[#253e2e] bg-white px-4 py-2 text-sm font-semibold text-[#253e2e] hover:bg-[#f0f4e1] disabled:cursor-not-allowed disabled:opacity-60"
+                    <fieldset
+                      disabled={Boolean(recordedDecision) || decisionLoading}
+                      className="space-y-3 border-t border-[#dce2bd] pt-4"
                     >
-                      Accept after human review
-                    </button>
+                      <legend className="text-sm font-semibold">
+                        Human decision
+                      </legend>
+                      <p className="text-xs leading-5 text-[#58645d]">
+                        Review the evidence, choose the final queue priority, and
+                        explain your decision. A different priority records an
+                        explicit override of the advisory result.
+                      </p>
+
+                      <label
+                        className="block text-xs font-semibold"
+                        htmlFor="final-priority"
+                      >
+                        Final priority
+                      </label>
+                      <select
+                        id="final-priority"
+                        value={finalPriority}
+                        onChange={(event) =>
+                          setFinalPriority(event.target.value as Priority)
+                        }
+                        className="w-full rounded-md border border-[#aeb8af] bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="urgent">Urgent</option>
+                        <option value="high">High</option>
+                        <option value="standard">Standard</option>
+                      </select>
+
+                      {finalPriority !== triage.recommendation && (
+                        <p className="rounded-md bg-amber-50 p-2 text-xs font-semibold text-amber-900">
+                          Override: model recommended {triage.recommendation}.
+                        </p>
+                      )}
+
+                      <label
+                        className="block text-xs font-semibold"
+                        htmlFor="decision-reason"
+                      >
+                        Decision rationale
+                      </label>
+                      <textarea
+                        id="decision-reason"
+                        value={decisionReason}
+                        onChange={(event) => setDecisionReason(event.target.value)}
+                        maxLength={500}
+                        rows={4}
+                        placeholder="Explain what evidence you reviewed and why this is the final priority."
+                        className="w-full rounded-md border border-[#aeb8af] bg-white px-3 py-2 text-sm leading-5"
+                      />
+                      <div className="flex justify-between text-xs text-[#65705f]">
+                        <span>Minimum 10 characters</span>
+                        <span>{decisionReason.length}/500</span>
+                      </div>
+
+                      <button
+                        onClick={recordDecision}
+                        type="button"
+                        disabled={
+                          identity?.role !== "caseworker" ||
+                          decisionReason.trim().length < 10 ||
+                          Boolean(recordedDecision) ||
+                          decisionLoading
+                        }
+                        className="w-full rounded-md border border-[#253e2e] bg-white px-4 py-2 text-sm font-semibold text-[#253e2e] hover:bg-[#f0f4e1] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {recordedDecision
+                          ? "Decision recorded"
+                          : decisionLoading
+                            ? "Recording decision…"
+                            : finalPriority === triage.recommendation
+                              ? "Record acceptance"
+                              : "Record override"}
+                      </button>
+                    </fieldset>
+
+                    {recordedDecision && (
+                      <section
+                        aria-label="Recorded decision receipt"
+                        className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-950"
+                      >
+                        <p className="font-semibold">Audit receipt</p>
+                        <p className="mt-1">
+                          {recordedDecision.reviewer} recorded{" "}
+                          <strong>{recordedDecision.outcome}</strong> at{" "}
+                          {new Date(
+                            recordedDecision.recorded_at,
+                          ).toLocaleString()}.
+                        </p>
+                        <p className="mt-1">{recordedDecision.reason}</p>
+                      </section>
+                    )}
                   </div>
                 )}
                 {message && (
-                  <p role="status" className="rounded-md bg-[#edf0eb] p-3 text-sm">
+                  <p
+                    role={messageKind === "error" ? "alert" : "status"}
+                    className={`rounded-md p-3 text-sm ${
+                      messageKind === "error"
+                        ? "bg-red-50 text-red-800"
+                        : "bg-emerald-50 text-emerald-900"
+                    }`}
+                  >
                     {message}
                   </p>
                 )}
+
+                {triage && (
+                  <section className="rounded-md border border-[#d8ddd6] bg-[#f7f8f5] p-3 text-xs text-[#58645d]">
+                    <p className="font-semibold text-[#253e2e]">
+                      AI-assisted recommendation
+                    </p>
+                    <p className="mt-1 leading-5">
+                      Generated by {triage.model}. This advisory result does not
+                      change the case until a named caseworker records a human
+                      decision.
+                    </p>
+                  </section>
+                )}
+
                 <div className="border-t border-[#e0e4de] pt-4 text-xs leading-5 text-[#69756d]">
                   The model cannot make legal decisions, infer protected characteristics, or
                   update case priority without human approval.

@@ -18,6 +18,20 @@ def test_request_id_is_preserved_in_response() -> None:
     assert response.headers[REQUEST_ID_HEADER] == "test-request-123"
 
 
+def test_request_id_is_exposed_through_cors() -> None:
+    client = TestClient(app)
+
+    response = client.get(
+        "/health",
+        headers={"Origin": "http://localhost:3000"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers[REQUEST_ID_HEADER]
+    exposed_headers = response.headers["access-control-expose-headers"]
+    assert "X-Request-ID" in exposed_headers
+
+
 def test_request_id_is_generated_when_absent() -> None:
     client = TestClient(app)
 

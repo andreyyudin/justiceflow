@@ -5,6 +5,7 @@ import httpx
 import structlog
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .auth import (
@@ -19,7 +20,17 @@ from .database import create_engine, create_session_factory, session_scope
 from .llm_observability import create_llm_telemetry
 from .observability import configure_logging, request_context_middleware
 from .repositories import DecisionRepository
-from .schemas import Case, Decision, DecisionRequest, TriageRequest, TriageResult
+from .schemas import (
+    Case,
+    CaseStatus,
+    Decision,
+    DecisionHistory,
+    DecisionRequest,
+    ObservabilityStatus,
+    RecommendationCreate,
+    TriageRequest,
+    TriageResult,
+)
 from .triage import OllamaClient
 
 logger = structlog.get_logger()
@@ -91,6 +102,7 @@ app.add_middleware(
         "Authorization",
         "Content-Type",
     ],
+    expose_headers=["X-Request-ID"],
 )
 
 
@@ -105,9 +117,44 @@ async def current_identity(identity: IdentityDependency) -> Identity:
 
 
 @app.get("/api/cases")
-async def list_cases(identity: IdentityDependency) -> list[Case]:
+async def list_cases(
+    identity: IdentityDependency,
+    repository: DecisionRepositoryDependency,
+) -> list[Case]:
     authorize(identity, Role.caseworker, Role.auditor)
-    return CASES
+    latest_decisions = await repository.latest_by_case_id()
+
+    return [
+        case.model_copy(
+            update={
+                "priority": latest.outcome,
+                "status": CaseStatus.approved,
+                "latest_decision": latest,
+            }
+        )
+        if (latest := latest_decisions.get(case.id))
+        else case
+        for case in CASES
+    ]
+
+
+@app.get("/api/observability")
+async def observability_status(identity: IdentityDependency) -> ObservabilityStatus:
+    authorize(identity, Role.auditor)
+    return ObservabilityStatus(
+        langfuse_enabled=llm_telemetry is not None,
+        environment=settings.langfuse_environment,
+        release=settings.release,
+    )
+
+
+@app.get("/api/decisions/history")
+async def decision_history(
+    identity: IdentityDependency,
+    repository: DecisionRepositoryDependency,
+) -> DecisionHistory:
+    authorize(identity, Role.auditor)
+    return await repository.decision_history()
 
 
 @app.post(
@@ -119,6 +166,7 @@ async def list_cases(identity: IdentityDependency) -> list[Case]:
 )
 async def triage_case(
     request: TriageRequest,
+    repository: DecisionRepositoryDependency,
     identity: IdentityDependency,
 ) -> TriageResult:
     authorize(identity, Role.caseworker)
@@ -147,38 +195,114 @@ async def triage_case(
                 "model is installed."
             ),
         ) from exc
+    persisted = await repository.add_recommendation(
+        RecommendationCreate(
+            case_id=result.case_id,
+            recommendation=result.recommendation,
+            rationale=result.rationale,
+            evidence=result.evidence,
+            model=result.model,
+            model_confidence=result.model_confidence,
+            latency_ms=result.latency_ms,
+        )
+    )
     logger.info(
         "triage_completed",
         case_id=case.id,
-        recommendation=result.recommendation,
-        model=result.model,
-        latency_ms=result.latency_ms,
+        recommendation_id=str(persisted.id),
+        recommendation=persisted.recommendation,
+        model=persisted.model,
+        latency_ms=persisted.latency_ms,
         actor_subject=identity.subject,
         actor_role=identity.role,
     )
-    return result
+    return TriageResult(
+        recommendation_id=persisted.id,
+        case_id=persisted.case_id,
+        recommendation=persisted.recommendation,
+        rationale=persisted.rationale,
+        evidence=persisted.evidence,
+        model=persisted.model,
+        latency_ms=persisted.latency_ms,
+    )
 
 
 @app.post(
     "/api/decisions",
     status_code=201,
-    responses={404: {"description": "Case not found"}},
+    response_model=Decision,
+    responses={
+        200: {"description": "Existing decision returned for an idempotent replay"},
+        404: {"description": "Case or recommendation not found"},
+        409: {
+            "description": (
+                "Recommendation is stale, already has a conflicting decision, "
+                "or belongs to another case"
+            )
+        },
+    },
 )
 async def record_decision(
     request: DecisionRequest,
     repository: DecisionRepositoryDependency,
     identity: IdentityDependency,
-) -> Decision:
+) -> Decision | JSONResponse:
     authorize(identity, Role.caseworker)
     if get_case(request.case_id) is None:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    recommendation = await repository.get_recommendation(
+        request.recommendation_id,
+    )
+    if recommendation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Recommendation not found.",
+        )
+    if recommendation.case_id != request.case_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Recommendation does not belong to this case.",
+        )
+
+    existing = await repository.decision_for_recommendation(
+        request.recommendation_id,
+    )
+    if existing is not None:
+        if (
+            existing.case_id == request.case_id
+            and existing.outcome == request.outcome
+            and existing.reason == request.reason
+            and existing.reviewer == identity.display_name
+        ):
+            return JSONResponse(
+                status_code=200,
+                content=existing.model_dump(mode="json"),
+            )
+        raise HTTPException(
+            status_code=409,
+            detail="Recommendation already has a different human decision.",
+        )
+
+    latest_recommendation_id = await repository.latest_recommendation_id(
+        request.case_id,
+    )
+    if latest_recommendation_id != request.recommendation_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Recommendation is stale. Generate a new recommendation.",
+        )
+
     decision = await repository.add(
         request,
         reviewer=identity.display_name,
+        recommendation=recommendation,
     )
     logger.info(
         "human_decision_recorded",
         case_id=decision.case_id,
+        recommendation_id=str(decision.recommendation_id),
+        decision_type=decision.decision_type,
         outcome=decision.outcome,
         reviewer=decision.reviewer,
         actor_subject=identity.subject,

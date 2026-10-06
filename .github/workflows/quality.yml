@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend quality and evaluation
+    name: Backend quality and safeguard regression
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,7 +40,7 @@ jobs:
         run: uv run mypy
       - name: Test
         run: uv run pytest --cov=app --cov-report=term-missing
-      - name: Run responsible AI evaluation
+      - name: Run deterministic safety-floor regression
         run: uv run python -m evals.run
       - name: Validate migration SQL
         run: uv run alembic upgrade head --sql
