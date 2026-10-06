@@ -11,3 +11,9 @@ __pycache__/
 backend/.venv/
 web/node_modules/
 web/.next/
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/terraform.tfvars
+infra/crash.log
+infra/crash.*.log

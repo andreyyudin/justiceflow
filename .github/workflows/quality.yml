@@ -83,3 +83,19 @@ jobs:
         env:
           POSTGRES_PASSWORD: compose-validation-password
         run: docker compose build
+  infrastructure:
+    name: Validate Azure Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.7"
+      - name: Check Terraform formatting
+        run: terraform -chdir=infra fmt -check -recursive
+      - name: Initialize without backend
+        run: terraform -chdir=infra init -backend=false -input=false
+      - name: Validate Terraform
+        run: terraform -chdir=infra validate

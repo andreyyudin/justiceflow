@@ -29,6 +29,8 @@ JusticeFlow does not predict offending, guilt, legal outcomes, sentence, or indi
 - Optional privacy-safe Langfuse generation tracing and quality scores
 - Multi-stage, non-root Docker images
 - Health-checked Docker Compose orchestration
+- Reviewable Azure infrastructure using Terraform and AzureRM
+- Container Apps, ACR, Key Vault, managed identity, PostgreSQL, and Log Analytics
 - Strict typing, linting, tests, coverage, and production dependency auditing
 
 ## Architecture
@@ -50,6 +52,8 @@ Auditable human decisions
 ```
 
 FastAPI owns all domain rules and AI orchestration. The browser never calls the model directly. The application sends only synthetic case data to the configured local model.
+
+The reviewable Azure target maps this architecture to Azure Container Apps, Azure Container Registry, Azure Database for PostgreSQL, Key Vault, managed identity, and Log Analytics. It is validated without running a plan or applying resources to the currently authenticated organisation subscription.
 
 ## Responsible AI controls
 
@@ -241,16 +245,38 @@ backend/
   tests/             Unit and API tests
 web/
   src/app/           Next.js caseworker interface
+infra/               Validated AzureRM Terraform target
 compose.yaml         Production-style local orchestration
 ```
+
+## Azure and Terraform target
+
+The `infra/` directory supplies a pinned and validated AzureRM deployment design for:
+
+- Azure Container Apps hosting the FastAPI and Next.js workloads
+- Azure Container Registry with managed-identity image pulls
+- Azure Key Vault references for runtime secrets
+- Azure Database for PostgreSQL Flexible Server
+- Log Analytics-backed platform observability
+- health probes and HTTP autoscaling
+
+Validation is intentionally offline with respect to Azure resources:
+
+```sh
+terraform -chdir=infra fmt -check -recursive
+terraform -chdir=infra init -backend=false
+terraform -chdir=infra validate
+```
+
+No Terraform plan or apply was run against the authenticated organisation subscription. The target requires a dedicated personal sandbox, protected remote state, and the hardening steps documented in `infra/README.md` before deployment.
 
 ## Production path
 
 The local deployment is designed to make the next production steps explicit:
 
 - replace local Ollama with an approved, private model endpoint through the existing provider boundary
-- use managed PostgreSQL with workload identity and secret management
-- deploy immutable images to a managed container platform
+- harden the validated Azure target with private networking and Entra ID
+- deploy immutable digest-pinned images through an approved sandbox pipeline
 - route privacy-safe Langfuse telemetry to the organisation's approved observability platform
 - add authentication, authorisation, retention, redaction, and information-governance controls
 - run user research and accessibility testing with frontline staff
