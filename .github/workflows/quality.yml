@@ -105,6 +105,12 @@ jobs:
           terraform_version: "1.15.7"
       - name: Set up TFLint
         uses: terraform-linters/setup-tflint@v6.3.2
+        with:
+          tflint_version: "v0.63.1"
+      - name: Verify infrastructure toolchain
+        run: |
+          terraform version | grep -q '^Terraform v1.15.7$'
+          tflint --version | grep -q '^TFLint version 0.63.1$'
       - name: Check Terraform formatting
         run: terraform -chdir=infra fmt -check -recursive
       - name: Initialize without backend
