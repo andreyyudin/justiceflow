@@ -11,6 +11,7 @@ uv run ruff check .
 uv run mypy
 uv run pytest --cov=app --cov-report=term-missing
 uv run python -m evals.run
+OLLAMA_URL=http://localhost:11434 OLLAMA_MODEL=qwen3:4b uv run python -m evals.run_model
 uv run alembic upgrade head --sql
 ```
 
