@@ -227,10 +227,18 @@ npm run test:e2e:install
 npm run test:e2e
 ```
 
-The browser suite expects the complete Docker Compose stack to be running because it exercises the real Keycloak login and protected API.
+The browser suite expects the complete Docker Compose stack to be running because it exercises the real Keycloak login and protected API. The default suite excludes the slower real-model smoke journey so CI does not depend on a model installed outside the Compose stack.
+
+Real-model provenance smoke:
+
+```sh
+cd web
+npm run test:e2e:real-model
+```
+
+This opt-in smoke command requires the complete local stack, a reachable Ollama service, and the configured model. It signs in through the real local OIDC flow, generates two recommendations, verifies stale-review rejection, records the latest recommendation, checks exact and conflicting replay semantics, and confirms the decision survives a browser refresh. It appends synthetic recommendations and one human decision to the local database on every successful run. It is an integration smoke test, not a model-quality evaluation.
 
 Deployment and security:
-
 ```sh
 POSTGRES_PASSWORD=compose-validation-password \
 KEYCLOAK_ADMIN_PASSWORD=compose-validation-identity-password \
