@@ -35,6 +35,20 @@ from .triage import ModelOutputSafetyError, OllamaClient
 
 logger = structlog.get_logger()
 
+ModelNames = list[str]
+
+HARDWARE_APPROPRIATE_MODELS = frozenset(
+    {
+        "deepseek-r1:1.5b",
+        "llama3.2:latest",
+        "phi3:latest",
+        "phi4-mini-reasoning:latest",
+        "phi4-mini:3.8b",
+        "qwen3.5:2b",
+        "qwen3:4b",
+    }
+)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="JUSTICEFLOW_")
@@ -116,6 +130,53 @@ async def current_identity(identity: IdentityDependency) -> Identity:
     return identity
 
 
+async def available_ollama_models() -> ModelNames:
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        response = await client.get(f"{settings.ollama_url}/api/tags")
+        response.raise_for_status()
+
+    installed = {
+        model["name"]
+        for model in response.json().get("models", [])
+        if isinstance(model, dict) and isinstance(model.get("name"), str)
+    }
+    available = sorted(installed & HARDWARE_APPROPRIATE_MODELS)
+
+    if settings.ollama_model in available:
+        available.remove(settings.ollama_model)
+        available.insert(0, settings.ollama_model)
+
+    return available
+
+
+@app.get(
+    "/api/models",
+    responses={503: {"description": "Local AI provider unavailable"}},
+)
+async def list_models(identity: IdentityDependency) -> ModelNames:
+    authorize(identity, Role.caseworker)
+    try:
+        models = await available_ollama_models()
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        logger.warning(
+            "model_inventory_failed",
+            error_type=type(exc).__name__,
+            error=str(exc) or repr(exc),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Local AI is unavailable. Start Ollama and try again.",
+        ) from exc
+
+    if not models:
+        raise HTTPException(
+            status_code=503,
+            detail="No hardware-appropriate local models are installed.",
+        )
+
+    return models
+
+
 @app.get("/api/cases")
 async def list_cases(
     identity: IdentityDependency,
@@ -161,6 +222,7 @@ async def decision_history(
     "/api/triage",
     responses={
         404: {"description": "Case not found"},
+        422: {"description": "Selected model is not approved or installed"},
         503: {"description": "Local AI provider unavailable"},
     },
 )
@@ -173,9 +235,36 @@ async def triage_case(
     case = get_case(request.case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    if request.model not in HARDWARE_APPROPRIATE_MODELS:
+        raise HTTPException(
+            status_code=422,
+            detail="Selected model is not approved for this hardware.",
+        )
+
+    try:
+        installed_models = await available_ollama_models()
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        logger.warning(
+            "model_inventory_failed",
+            case_id=case.id,
+            error_type=type(exc).__name__,
+            error=str(exc) or repr(exc),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Local AI is unavailable. Start Ollama and try again.",
+        ) from exc
+
+    if request.model not in installed_models:
+        raise HTTPException(
+            status_code=422,
+            detail="Selected model is not installed in Ollama.",
+        )
+
     client = OllamaClient(
         settings.ollama_url,
-        settings.ollama_model,
+        request.model,
         settings.ollama_timeout_seconds,
         llm_telemetry,
     )

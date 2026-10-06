@@ -54,6 +54,9 @@ async function generateRecommendation(page: Page) {
     { timeout: 130_000 },
   );
 
+  await expect(page.getByLabel("Model for recommendation")).toHaveValue(
+    "qwen3:4b",
+  );
   await page
     .getByRole("button", { name: "Generate AI recommendation" })
     .click();

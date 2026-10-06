@@ -5,7 +5,12 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.auth import Identity, Role
-from app.main import app, get_decision_repository, get_identity
+from app.main import (
+    HARDWARE_APPROPRIATE_MODELS,
+    app,
+    get_decision_repository,
+    get_identity,
+)
 from app.repositories import DecisionRepository
 from app.schemas import (
     Decision,
@@ -95,6 +100,57 @@ def test_latest_human_decision_updates_case_projection() -> None:
     assert projected["latest_decision"]["reason"] == ("Housing evidence requires urgent handling.")
 
 
+def test_caseworker_model_inventory_is_hardware_appropriate() -> None:
+    app.dependency_overrides[get_identity] = identity_override(CASEWORKER)
+    try:
+        with patch(
+            "app.main.available_ollama_models",
+            AsyncMock(return_value=["qwen3:4b", "qwen3.5:2b"]),
+        ):
+            response = client.get("/api/models")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == ["qwen3:4b", "qwen3.5:2b"]
+
+
+def test_auditor_cannot_read_model_inventory() -> None:
+    app.dependency_overrides[get_identity] = identity_override(AUDITOR)
+    try:
+        response = client.get("/api/models")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+
+
+def test_triage_rejects_model_outside_hardware_policy() -> None:
+    app.dependency_overrides[get_identity] = identity_override(CASEWORKER)
+    try:
+        response = client.post(
+            "/api/triage",
+            json={"case_id": "case-1027", "model": "llama3:latest"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Selected model is not approved for this hardware."}
+
+
+def test_hardware_policy_has_expected_local_models() -> None:
+    assert HARDWARE_APPROPRIATE_MODELS == {
+        "deepseek-r1:1.5b",
+        "llama3.2:latest",
+        "phi3:latest",
+        "phi4-mini-reasoning:latest",
+        "phi4-mini:3.8b",
+        "qwen3.5:2b",
+        "qwen3:4b",
+    }
+
+
 def test_triage_persists_recommendation_and_returns_identifier() -> None:
     repository = AsyncMock(spec=DecisionRepository)
     recommendation_id = uuid4()
@@ -120,8 +176,17 @@ def test_triage_persists_recommendation_and_returns_identifier() -> None:
     app.dependency_overrides[get_decision_repository] = repository_override(repository)
     app.dependency_overrides[get_identity] = identity_override(CASEWORKER)
     try:
-        with patch("app.main.OllamaClient.triage", AsyncMock(return_value=generated)):
-            response = client.post("/api/triage", json={"case_id": "case-1027"})
+        with (
+            patch(
+                "app.main.available_ollama_models",
+                AsyncMock(return_value=["qwen3:4b"]),
+            ),
+            patch("app.main.OllamaClient.triage", AsyncMock(return_value=generated)),
+        ):
+            response = client.post(
+                "/api/triage",
+                json={"case_id": "case-1027", "model": "qwen3:4b"},
+            )
     finally:
         app.dependency_overrides.clear()
 
@@ -138,7 +203,10 @@ def test_triage_persists_recommendation_and_returns_identifier() -> None:
 def test_unknown_case_cannot_be_triaged() -> None:
     app.dependency_overrides[get_identity] = identity_override(CASEWORKER)
     try:
-        response = client.post("/api/triage", json={"case_id": "missing"})
+        response = client.post(
+            "/api/triage",
+            json={"case_id": "missing", "model": "qwen3:4b"},
+        )
     finally:
         app.dependency_overrides.clear()
 
@@ -312,7 +380,7 @@ def test_auditor_can_read_cases_but_cannot_triage_or_decide() -> None:
         cases_response = client.get("/api/cases")
         triage_response = client.post(
             "/api/triage",
-            json={"case_id": "case-1027"},
+            json={"case_id": "case-1027", "model": "qwen3:4b"},
         )
         decision_response = client.post(
             "/api/decisions",
@@ -567,15 +635,23 @@ def test_prohibited_model_output_is_rejected_without_persistence() -> None:
     app.dependency_overrides[get_identity] = identity_override(CASEWORKER)
 
     try:
-        with patch(
-            "app.main.OllamaClient.triage",
-            AsyncMock(
-                side_effect=ModelOutputSafetyError("Model rationale contained prohibited content.")
+        with (
+            patch(
+                "app.main.available_ollama_models",
+                AsyncMock(return_value=["qwen3:4b"]),
+            ),
+            patch(
+                "app.main.OllamaClient.triage",
+                AsyncMock(
+                    side_effect=ModelOutputSafetyError(
+                        "Model rationale contained prohibited content."
+                    )
+                ),
             ),
         ):
             response = client.post(
                 "/api/triage",
-                json={"case_id": "case-1027"},
+                json={"case_id": "case-1027", "model": "qwen3:4b"},
             )
     finally:
         app.dependency_overrides.clear()

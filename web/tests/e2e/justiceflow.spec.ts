@@ -63,6 +63,9 @@ test("caseworker completes real OIDC PKCE login and can access triage controls",
     page.getByRole("heading", { name: "Triage review queue" }),
   ).toBeVisible();
   await expect(page.getByText("caseworker · Local AI")).toBeVisible();
+  const modelSelector = page.getByLabel("Model for recommendation");
+  await expect(modelSelector).toBeVisible();
+  await expect(modelSelector).toHaveValue("qwen3:4b");
   await expect(
     page.getByRole("button", { name: "Generate AI recommendation" }),
   ).toBeEnabled();
@@ -81,6 +84,7 @@ test("auditor completes real OIDC login and is restricted to read-only access", 
   await signIn(page, AUDITOR);
 
   await expect(page.getByText("auditor · Local AI")).toBeVisible();
+  await expect(page.getByLabel("Model for recommendation")).toHaveCount(0);
   const readOnlyButton = page.getByRole("button", {
     name: "Auditor access is read-only",
   });

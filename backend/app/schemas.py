@@ -39,6 +39,7 @@ class Case(BaseModel):
 
 class TriageRequest(BaseModel):
     case_id: str
+    model: str = Field(min_length=1, max_length=100)
 
 
 class EvidenceSource(StrEnum):

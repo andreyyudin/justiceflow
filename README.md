@@ -136,7 +136,7 @@ The accessibility gate found and fixed a queue metadata contrast defect during i
 - Ollama
 - A machine capable of running the configured local model
 
-The default model is `qwen3:4b`, selected as a practical compact model for a 16 GB Intel Mac. You can override it with `OLLAMA_MODEL`.
+The default model is `qwen3:4b`, selected as a practical compact model for a 16 GB Intel Mac. Caseworkers can choose among installed, completion-capable models from 1B through 4B in the interface. The server rejects models outside that hardware policy; `gemma3:270m` is below the casework reasoning floor and `llama3:latest` at 8B is excluded from this interactive Intel CPU workflow. `OLLAMA_MODEL` controls which allowed installed model appears first.
 
 ### 1. Start Ollama
 

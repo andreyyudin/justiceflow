@@ -99,6 +99,8 @@ export default function Home() {
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [cases, setCases] = useState<Case[]>([]);
   const [selectedId, setSelectedId] = useState("");
+  const [models, setModels] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState("");
   const [triage, setTriage] = useState<TriageResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
@@ -139,6 +141,16 @@ export default function Home() {
         setIdentity(currentIdentity);
         setCases(queue);
         setSelectedId(queue[0]?.id ?? "");
+
+        if (currentIdentity.role === "caseworker") {
+          const modelsResponse = await fetch(`${API_URL}/api/models`, { headers });
+          if (!modelsResponse.ok) {
+            throw new Error("Local model inventory request failed");
+          }
+          const availableModels = (await modelsResponse.json()) as string[];
+          setModels(availableModels);
+          setSelectedModel(availableModels[0] ?? "");
+        }
 
         if (currentIdentity.role === "auditor") {
           const [observabilityResponse, historyResponse] = await Promise.all([
@@ -181,7 +193,11 @@ export default function Home() {
   );
 
   async function runTriage() {
-    if (!selected || identity?.role !== "caseworker") return;
+    if (
+      !selected ||
+      !selectedModel ||
+      identity?.role !== "caseworker"
+    ) return;
     setAiLoading(true);
     setMessage("");
     setTriage(null);
@@ -191,7 +207,10 @@ export default function Home() {
       const response = await fetch(`${API_URL}/api/triage`, {
         method: "POST",
         headers: bearerHeaders(user.access_token, true),
-        body: JSON.stringify({ case_id: selected.id }),
+        body: JSON.stringify({
+          case_id: selected.id,
+          model: selectedModel,
+        }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail ?? "Triage failed");
@@ -632,9 +651,46 @@ export default function Home() {
                     <span className="text-xs text-[#69756d]">No rule-based flags</span>
                   )}
                 </div>
+                {identity?.role === "caseworker" && (
+                  <div>
+                    <label
+                      htmlFor="recommendation-model"
+                      className="mb-2 block text-xs font-semibold uppercase text-[#69756d]"
+                    >
+                      Model for recommendation
+                    </label>
+                    <select
+                      id="recommendation-model"
+                      value={selectedModel}
+                      onChange={(event) => {
+                        setSelectedModel(event.target.value);
+                        setTriage(null);
+                        setRecordedDecision(null);
+                        setDecisionReason("");
+                        setMessage("");
+                      }}
+                      disabled={aiLoading || models.length === 0}
+                      className="w-full rounded-md border border-[#aeb8b0] bg-white px-3 py-2 text-sm text-[#253e2e] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {models.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-xs leading-5 text-[#69756d]">
+                      Only installed models suitable for this 16 GB Intel Mac
+                      are shown.
+                    </p>
+                  </div>
+                )}
                 <button
                   onClick={runTriage}
-                  disabled={aiLoading || identity?.role !== "caseworker"}
+                  disabled={
+                    aiLoading ||
+                    identity?.role !== "caseworker" ||
+                    !selectedModel
+                  }
                   className="w-full rounded-md bg-[#253e2e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1c3023] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {identity?.role === "auditor"
