@@ -114,9 +114,3 @@ variable "oidc_jwks_url" {
     error_message = "Production JWKS URL must use HTTPS."
   }
 }
-
-variable "web_oidc_client_id" {
-  description = "Public OIDC client identifier embedded in the web image."
-  type        = string
-  default     = "justiceflow-web"
-}

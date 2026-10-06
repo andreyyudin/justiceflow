@@ -7,7 +7,6 @@ langfuse_base_url              = "https://approved-langfuse-endpoint.example"
 oidc_issuer                    = "https://login.example/tenant/v2.0"
 oidc_jwks_url                  = "https://login.example/tenant/discovery/v2.0/keys"
 oidc_audience                  = "justiceflow-api"
-web_oidc_client_id             = "justiceflow-web"
 
 tags = {
   owner       = "portfolio"
