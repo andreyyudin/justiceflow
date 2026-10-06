@@ -2,6 +2,8 @@
 
 JusticeFlow is a production-oriented, human-in-the-loop casework triage application built with synthetic data. It demonstrates how AI can support justice caseworkers with explainable queue-priority recommendations while preserving human judgement, auditability, and operational control.
 
+Licensed under the MIT License. Contributions are welcome through focused pull requests that preserve the project's security, accessibility, and responsible-AI boundaries. See `CONTRIBUTING.md` and `SECURITY.md`.
+
 ## Why this project exists
 
 Justice services often depend on high-volume queues, fragmented records, accessibility requirements, and time-sensitive events. JusticeFlow explores a deliberately narrow and responsible use of AI:

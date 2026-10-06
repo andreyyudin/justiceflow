@@ -3,6 +3,10 @@ name = "justiceflow-api"
 version = "0.1.0"
 description = "Human-in-the-loop AI triage for synthetic justice casework"
 readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Andrii Iudin", email = "andrii.iudin@gmail.com" },
+]
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.20.0",

@@ -1,7 +1,9 @@
 {
-  "name": "web",
+  "name": "justiceflow-web",
   "version": "0.1.0",
+  "description": "Caseworker interface for the JusticeFlow synthetic justice triage demonstration",
   "private": true,
+  "license": "MIT",
   "packageManager": "npm@12.2.0",
   "engines": {
     "node": "22.23.3",
