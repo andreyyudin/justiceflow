@@ -30,7 +30,8 @@ JusticeFlow does not predict offending, guilt, legal outcomes, sentence, or indi
 - OpenID Connect Authorization Code with PKCE and signed JWT validation
 - Caseworker and auditor roles with server-derived reviewer identity
 - Real-browser OIDC journeys and automated WCAG A/AA accessibility scans
-- Multi-stage, non-root Docker images
+- Multi-stage, non-root Docker images with build-only package managers removed
+- Locked dependency audits and high/critical runtime image vulnerability gates
 - Health-checked Docker Compose orchestration
 - Reviewable Azure infrastructure using Terraform and AzureRM
 - Container Apps, ACR, Key Vault, managed identity, PostgreSQL, and Log Analytics
@@ -224,11 +225,28 @@ npm run test:e2e
 
 The browser suite expects the complete Docker Compose stack to be running because it exercises the real Keycloak login and protected API.
 
-Deployment configuration:
+Deployment and security:
 
 ```sh
-POSTGRES_PASSWORD=compose-validation-password docker compose config --quiet
+POSTGRES_PASSWORD=compose-validation-password \
+KEYCLOAK_ADMIN_PASSWORD=compose-validation-identity-password \
+docker compose config --quiet
+
+docker compose build api web
+
+cd backend
+uv export \
+  --locked \
+  --no-dev \
+  --no-emit-project \
+  --format requirements-txt \
+  --output-file /tmp/justiceflow-requirements.txt
+uvx --from pip-audit==2.10.0 pip-audit \
+  --requirement /tmp/justiceflow-requirements.txt \
+  --progress-spinner off
 ```
+
+CI scans the built API and web runtime images with Trivy 0.72.0 and fails on fixed high or critical vulnerabilities. The runtime images remain non-root and exclude package managers that are required only while building: system pip is absent from the API image, and npm and npx are absent from the web image.
 
 ## Observability
 

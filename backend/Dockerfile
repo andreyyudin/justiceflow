@@ -25,6 +25,11 @@ WORKDIR /app
 
 COPY --from=builder --chown=justiceflow:justiceflow /app /app
 
+RUN rm -rf \
+      /usr/local/lib/python3.13/site-packages/pip \
+      /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
+    && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13
+
 USER justiceflow
 
 EXPOSE 8000
