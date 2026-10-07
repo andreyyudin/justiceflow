@@ -17,6 +17,8 @@ uv run alembic upgrade head --sql
 
 Runtime configuration uses environment variables prefixed with `JUSTICEFLOW_`. See the repository `.env.example` for the supported deployment values.
 
+The production container runs `alembic upgrade head` before starting FastAPI. This provides a free-tier-compatible migration path for Render, where pre-deploy commands are unavailable.
+
 ## Authentication
 
 Protected routes require an RS256 bearer access token. The API resolves signing keys from `JUSTICEFLOW_OIDC_JWKS_URL` and validates the configured issuer and audience before deriving exactly one caseworker or auditor role from `JUSTICEFLOW_OIDC_ROLE_CLAIM`. The claim setting supports Keycloak's nested `realm_access.roles` path and a literal top-level namespaced Auth0 claim. Reviewer names come from validated token claims rather than request JSON.

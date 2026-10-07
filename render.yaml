@@ -7,7 +7,6 @@ services:
     rootDir: backend
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
-    preDeployCommand: alembic upgrade head
     envVars:
       - key: JUSTICEFLOW_DATABASE_URL
         sync: false

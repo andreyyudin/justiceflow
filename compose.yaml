@@ -6,7 +6,7 @@ name: justiceflow
 services:
   identity:
     image: quay.io/keycloak/keycloak:26.8.0
-    command: ["start-dev", "--import-realm"]
+    command: [ "start-dev", "--import-realm" ]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-local-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD in .env}
@@ -45,7 +45,8 @@ services:
   migrate:
     build:
       context: ./backend
-    command: ["alembic", "upgrade", "head"]
+    entrypoint: [ "alembic" ]
+    command: [ "upgrade", "head" ]
     environment:
       JUSTICEFLOW_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-justiceflow}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-justiceflow}
     depends_on:

@@ -25,13 +25,14 @@ WORKDIR /app
 
 COPY --from=builder --chown=justiceflow:justiceflow /app /app
 
-RUN rm -rf \
-      /usr/local/lib/python3.13/site-packages/pip \
-      /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
+RUN chmod 0755 /app/entrypoint.sh \
+    && rm -rf \
+    /usr/local/lib/python3.13/site-packages/pip \
+    /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
     && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13
 
 USER justiceflow
 
 EXPOSE 8000
 
-CMD ["fastapi", "run", "main.py", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]
