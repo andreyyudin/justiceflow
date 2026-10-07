@@ -81,7 +81,7 @@ Store the converted value for the Render variable:
 JUSTICEFLOW_DATABASE_URL
 ```
 
-The Render pre-deploy command applies all Alembic migrations before a new API deployment becomes active.
+The backend container entrypoint applies all Alembic migrations before starting the API. This is required because Render Free does not support pre-deploy commands. Alembic upgrades are idempotent, so restarts safely verify the database is at the current migration head before FastAPI starts.
 
 ## 2. Configure Auth0
 
