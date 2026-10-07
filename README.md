@@ -128,8 +128,39 @@ Playwright drives the complete Docker Compose stack and signs in through the rea
 
 The accessibility gate found and fixed a queue metadata contrast defect during implementation. Automated checks complement, rather than replace, manual accessibility testing and user research.
 
-## Run locally
+## Try the hosted demonstration
 
+A free-tier hosted demonstration is available at:
+
+```text
+https://justiceflow-nu.vercel.app
+```
+
+The demonstration contains only synthetic case data and provides two least-privilege roles:
+
+- `caseworker@justiceflow.example` can view cases, generate advisory recommendations, and record human decisions.
+- `auditor@justiceflow.example` can view cases, operational observability, and the append-only decision history, but cannot generate recommendations or record decisions.
+
+Passwords are not stored in this repository. Maintainers retrieve the synthetic account credentials from an approved secret manager and must not expose them in source files, CI logs, screenshots, or support conversations.
+
+The hosted environment is shared and stateful. Generating a recommendation creates a persisted synthetic record, and recording a decision makes it visible in the case view and auditor history. Avoid unnecessary generation requests and use an unreviewed synthetic case where possible.
+
+Suggested verification:
+
+1. Sign in as the caseworker.
+2. Select an unreviewed synthetic case.
+3. Confirm that only the approved hosted model is available.
+4. Generate one AI recommendation.
+5. Review the rationale and evidence, then record an acceptance or override with a meaningful human rationale.
+6. Refresh the page and confirm that the human decision remains visible.
+7. Sign out and sign in as the auditor.
+8. Confirm that recommendation and decision controls are read-only.
+9. Confirm that the decision and linked recommendation provenance appear in decision history.
+10. Sign out and confirm that protected casework is no longer visible.
+
+Every recommendation invokes the configured hosted model and consumes provider quota. See `deployment/README.md` for the complete post-deployment verification runbook, observability checks, privacy expectations, and free-tier limitations.
+
+## Run locally
 ### Prerequisites
 
 - Docker with Docker Compose
