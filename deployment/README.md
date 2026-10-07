@@ -317,49 +317,141 @@ If Render assigns a different domain than expected, update `NEXT_PUBLIC_API_URL`
 
 ## 8. Verify the hosted deployment
 
+The hosted verification journey uses synthetic data but mutates the shared demonstration database. A recommendation creates a persisted recommendation record, and a recorded human outcome appears in the case view and auditor history. For a formal deployment check, generate exactly one recommendation on an unreviewed case and record exactly one decision. Do not repeatedly invoke the model while troubleshooting authentication or read-only views.
+
+The synthetic usernames are:
+
+```text
+caseworker@justiceflow.example
+auditor@justiceflow.example
+```
+
+Passwords must remain in an approved secret manager. Do not commit them, place them in documentation, print them in CI logs, or include workstation-specific credential-retrieval commands in this repository.
+
 ### Health
 
-Open the Render health endpoint and confirm the configured provider and model are reported.
+Open the Render health endpoint and confirm that the response reports:
 
-### Authentication
+- `status=ok`
+- the configured hosted model
+- the configured provider
 
-Verify:
+Allow for a free-tier cold start before treating an initial timeout as a service failure.
 
-- unauthenticated users see the sign-in page
-- Auth0 uses Authorization Code with PKCE
-- the caseworker can view cases, select the hosted model, request triage, and record a decision
-- the auditor can view cases, observability status, and decision history
-- the auditor cannot request triage or record decisions
-- sign-out returns to the application
+### Unauthenticated boundary
+
+Open the final Vercel production origin in a fresh private browser context and verify:
+
+- the sign-in page is visible
+- protected casework is not visible
+- the browser is redirected to Auth0 after selecting **Sign in**
+- the authorization request uses Authorization Code with PKCE and requests the JusticeFlow API audience
+
+### Caseworker journey
+
+Sign in with the synthetic caseworker account and verify:
+
+1. The page identifies the current role as `caseworker`.
+2. The triage review queue and synthetic cases load.
+3. The model selector exposes only models approved for the configured hosted provider.
+4. Selecting a case does not change its operational priority.
+5. Selecting **Generate AI recommendation** creates one advisory result.
+6. The result shows a bounded queue priority, rationale, evidence, model identifier, and latency.
+7. The result states that human review is required.
+8. A rationale shorter than the configured minimum cannot be submitted.
+9. Keeping the recommended priority records an acceptance.
+10. Choosing another priority records an explicit override.
+11. The receipt names the authenticated caseworker rather than accepting reviewer identity from the browser.
+
+Use an unreviewed synthetic case where possible. Each generation consumes provider quota and appends a recommendation record.
 
 ### Persistence
 
-Record a synthetic human decision, refresh the browser, and confirm the decision remains visible.
+After recording the single test decision:
 
-### Model controls
+1. Confirm that an audit receipt appears.
+2. Refresh the browser.
+3. Select the same case.
+4. Confirm that the latest human decision remains visible with its reviewer, outcome, timestamp, and rationale.
 
-Verify:
+This verifies that the decision persisted in Neon rather than existing only in browser state.
 
-- the model selector exposes only the configured hosted model
+### Auditor journey
+
+Sign out, then use a fresh private browser context to sign in with the synthetic auditor account. Verify:
+
+- the page identifies the current role as `auditor`
+- cases remain visible
+- the model selector is absent
+- the recommendation control is disabled and labelled as read-only
+- no human-decision form is available
+- AI service observability is visible
+- Langfuse is reported as enabled
+- decision history contains the new human decision
+- the history entry links the decision to its advisory priority, model, rationale, and evidence provenance
+
+The auditor must not be able to request triage or record a decision, even by calling the protected endpoints directly.
+
+### Sign-out
+
+For both roles:
+
+1. Select **Sign out**.
+2. Confirm that Auth0 returns to the application.
+3. Refresh the page.
+4. Confirm that protected casework is unavailable until the user signs in again.
+
+### Model and safeguard controls
+
+Verify through automated checks or a controlled synthetic test that:
+
 - malformed model output produces no recommendation
-- prohibited rationale produces no recommendation
+- prohibited rationale produces no recommendation or persisted record
 - hearing-deadline cases cannot be downgraded below urgent
 - accessibility and housing-instability cases cannot be downgraded to standard
+- the browser cannot select an unapproved model identifier
+- a stale recommendation cannot be used to record a decision
+- a recommendation cannot receive conflicting human decisions
 
-### Observability
+Do not create additional hosted records merely to repeat deterministic checks that already pass in the repository test suite.
 
-Generate a recommendation and verify a Langfuse generation appears with:
+### Langfuse observability and privacy
+
+For the single generated recommendation, locate the `justiceflow-triage` generation in Langfuse and verify:
 
 - model identifier
 - bounded model parameters
-- token counts
-- latency
+- input and output token counts
+- model latency
 - final recommendation
 - model confidence
 - synthetic-data marker
-- human-review-required marker
+- mandatory-human-review marker
+- hosted environment and release metadata
+- prompt capture is disabled
 
-Confirm the trace does not contain the prompt, case summary, rationale, or evidence.
+Confirm that the observation contains none of the following:
+
+- prompt or messages
+- case summary
+- model rationale
+- rendered evidence
+- credentials, bearer tokens, or provider secrets
+
+Operational telemetry may contain identifiers and bounded metadata needed for diagnosis, but it must not contain synthetic case narrative content.
+
+### Completion criteria
+
+The hosted deployment is ready for demonstration only when:
+
+- caseworker and auditor authentication both pass
+- role separation is enforced by the API
+- one recommendation and one human decision complete successfully
+- the decision survives refresh
+- the auditor can review its provenance without mutation privileges
+- Langfuse contains the matching privacy-safe generation
+- Vercel and Render remain healthy
+- no paid feature or authenticated UKHSA Azure resource was used
 
 ## 9. Free-tier operational behavior
 
