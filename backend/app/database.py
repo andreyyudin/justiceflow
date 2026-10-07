@@ -7,12 +7,17 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from .database_url import normalize_asyncpg_url
+
 SessionFactory = async_sessionmaker[AsyncSession]
 SessionIterator = AsyncIterator[AsyncSession]
 
 
 def create_engine(database_url: str) -> AsyncEngine:
-    return create_async_engine(database_url, pool_pre_ping=True)
+    return create_async_engine(
+        normalize_asyncpg_url(database_url),
+        pool_pre_ping=True,
+    )
 
 
 def create_session_factory(
