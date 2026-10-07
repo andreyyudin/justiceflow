@@ -143,6 +143,10 @@ jobs:
     env:
       POSTGRES_PASSWORD: browser-test-password
       KEYCLOAK_ADMIN_PASSWORD: browser-test-identity-password
+      MODEL_PROVIDER: openai-compatible
+      MODEL_BASE_URL: http://model-provider.invalid/v1
+      MODEL_NAME: qwen3:4b
+      MODEL_API_KEY: browser-test-model-api-key
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
