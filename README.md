@@ -24,11 +24,11 @@ JusticeFlow does not predict offending, guilt, legal outcomes, sentence, or indi
 - FastAPI with typed request and response contracts
 - Async SQLAlchemy and PostgreSQL persistence
 - Alembic database migrations
-- A local Ollama-compatible LLM integration
+- Provider-neutral model integration with local Ollama and hosted OpenAI-compatible support
 - Deterministic safeguards around probabilistic model output
 - Versioned synthetic safety-floor regression scenarios
 - Structured JSON logs, request correlation IDs, and latency measurement
-- Optional privacy-safe Langfuse generation tracing with operational generation metrics
+- Required privacy-safe Langfuse generation tracing with operational generation metrics
 - OpenID Connect Authorization Code with PKCE and signed JWT validation
 - Caseworker and auditor roles with server-derived reviewer identity
 - Real-browser OIDC journeys and automated WCAG A/AA accessibility scans
@@ -51,17 +51,17 @@ Next.js casework interface
 FastAPI application
   |                     \
   v                      v
-PostgreSQL         Ollama-compatible LLM
+PostgreSQL         Configured AI provider
   |
   v
 Auditable human decisions
 ```
 
-FastAPI owns all domain rules and AI orchestration. The browser never calls the model directly. The application sends only synthetic case data to the configured local model.
+FastAPI owns all domain rules and AI orchestration. The browser never calls the model directly. The application sends only synthetic case data to the configured provider. Local development uses Ollama; the free-tier demonstration uses an OpenAI-compatible hosted endpoint.
 
-Authentication follows one production-shaped path in every environment. The browser uses OpenID Connect Authorization Code with PKCE, the API validates RS256 signatures through JWKS, and issuer, audience, expiry, subject, and role claims are mandatory. Local Docker Compose runs Keycloak as the identity provider; deployment supplies an approved OIDC authority such as Microsoft Entra ID without changing application authorization logic.
+Authentication follows one production-shaped path in every environment. The browser uses OpenID Connect Authorization Code with PKCE, the API validates RS256 signatures through JWKS, and issuer, audience, expiry, subject, and exactly one permitted role are mandatory. Local Docker Compose reads Keycloak roles from `realm_access.roles`; hosted deployment reads an Auth0 namespaced role claim without changing application authorization logic.
 
-The reviewable Azure target maps this architecture to Azure Container Apps, Azure Container Registry, Azure Database for PostgreSQL, Key Vault, managed identity, and Log Analytics. It is validated without running a plan or applying resources to the currently authenticated organisation subscription.
+The repository includes two deployment paths. The reviewable Azure target maps the architecture to Azure Container Apps, Azure Container Registry, Azure Database for PostgreSQL, Key Vault, managed identity, and Log Analytics. The free-tier portfolio path uses Vercel, Render, Neon, Auth0, Groq, and Langfuse Cloud. See `deployment/README.md` for the complete setup and limitations.
 
 ## Responsible AI controls
 
@@ -136,7 +136,7 @@ The accessibility gate found and fixed a queue metadata contrast defect during i
 - Ollama
 - A machine capable of running the configured local model
 
-The default model is `qwen3:4b`, selected as a practical compact model for a 16 GB Intel Mac. Caseworkers can choose among installed, completion-capable models from 1B through 4B in the interface. The server rejects models outside that hardware policy; `gemma3:270m` is below the casework reasoning floor and `llama3:latest` at 8B is excluded from this interactive Intel CPU workflow. `OLLAMA_MODEL` controls which allowed installed model appears first.
+The default model is `qwen3:4b`, selected as a practical compact model for a 16 GB Intel Mac. Caseworkers can choose among installed, completion-capable models from 1B through 4B in the interface. The server rejects models outside that hardware policy; `gemma3:270m` is below the casework reasoning floor and `llama3:latest` at 8B is excluded from this interactive Intel CPU workflow. `MODEL_NAME` controls which allowed installed model appears first.
 
 ### 1. Start Ollama
 
@@ -199,7 +199,7 @@ npm ci
 npm run dev
 ```
 
-This mode expects PostgreSQL at the configured `JUSTICEFLOW_DATABASE_URL`, Ollama at `JUSTICEFLOW_OLLAMA_URL`, and an OIDC provider matching `JUSTICEFLOW_OIDC_ISSUER`, `JUSTICEFLOW_OIDC_AUDIENCE`, and `JUSTICEFLOW_OIDC_JWKS_URL`. Running Keycloak through Docker Compose while starting the API and web processes natively preserves the same authentication flow.
+This mode expects PostgreSQL at `JUSTICEFLOW_DATABASE_URL`, a model provider matching `JUSTICEFLOW_MODEL_PROVIDER`, `JUSTICEFLOW_MODEL_BASE_URL`, and `JUSTICEFLOW_MODEL_NAME`, and an OIDC provider matching `JUSTICEFLOW_OIDC_ISSUER`, `JUSTICEFLOW_OIDC_AUDIENCE`, `JUSTICEFLOW_OIDC_JWKS_URL`, and `JUSTICEFLOW_OIDC_ROLE_CLAIM`. Local native development normally uses Ollama and can run Keycloak through Docker Compose to preserve the same authentication flow.
 
 ## Quality checks
 
@@ -317,8 +317,10 @@ backend/
 web/
   src/app/           Next.js caseworker interface and OIDC PKCE client
 local/keycloak/       Reproducible local identity-provider realm
-infra/               Validated AzureRM Terraform target
-compose.yaml         Local production-mode orchestration
+deployment/           Free-tier setup guide and Auth0 role Action
+infra/                Validated AzureRM Terraform target
+compose.yaml          Local production-mode orchestration
+render.yaml           Render Free API Blueprint
 ```
 
 ## Azure and Terraform target
@@ -341,6 +343,12 @@ terraform -chdir=infra validate
 ```
 
 No Terraform plan or apply was run against the authenticated organisation subscription. The target requires a dedicated personal sandbox, protected remote state, and the hardening steps documented in `infra/README.md` before deployment.
+
+## Free-tier portfolio deployment
+
+The repository includes a zero-cost demonstration path using Vercel Hobby, Render Free, Neon Free, Auth0 Free, Groq Free, and Langfuse Cloud Hobby. It preserves PKCE login, signed JWT validation, exact-one-role authorization, PostgreSQL persistence, mandatory telemetry, strict model-output validation, deterministic safety floors, and explicit human review.
+
+Provider quotas, availability, and free-plan terms can change. The deployment is suitable only for synthetic portfolio demonstrations and has no production service-level objective. Follow `deployment/README.md` for deployment order, variables, role configuration, security boundaries, and verification.
 
 ## Production path
 

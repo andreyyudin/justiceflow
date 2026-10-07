@@ -2,14 +2,18 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.auth import Identity, Role
 from app.main import (
     HARDWARE_APPROPRIATE_MODELS,
     app,
+    available_models,
+    create_triage_client,
     get_decision_repository,
     get_identity,
+    settings,
 )
 from app.repositories import DecisionRepository
 from app.schemas import (
@@ -20,7 +24,11 @@ from app.schemas import (
     Priority,
     Recommendation,
 )
-from app.triage import GeneratedRecommendation, ModelOutputSafetyError
+from app.triage import (
+    GeneratedRecommendation,
+    ModelOutputSafetyError,
+    OpenAICompatibleClient,
+)
 
 client = TestClient(app)
 
@@ -54,7 +62,11 @@ def test_health_reports_configured_local_model() -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "model": "qwen3:4b"}
+    assert response.json() == {
+        "status": "ok",
+        "model": "qwen3:4b",
+        "provider": "ollama",
+    }
 
 
 def test_cases_returns_decision_projected_queue_for_caseworker() -> None:
@@ -104,7 +116,7 @@ def test_caseworker_model_inventory_is_hardware_appropriate() -> None:
     app.dependency_overrides[get_identity] = identity_override(CASEWORKER)
     try:
         with patch(
-            "app.main.available_ollama_models",
+            "app.main.available_models",
             AsyncMock(return_value=["qwen3:4b", "qwen3.5:2b"]),
         ):
             response = client.get("/api/models")
@@ -178,7 +190,7 @@ def test_triage_persists_recommendation_and_returns_identifier() -> None:
     try:
         with (
             patch(
-                "app.main.available_ollama_models",
+                "app.main.available_models",
                 AsyncMock(return_value=["qwen3:4b"]),
             ),
             patch("app.main.OllamaClient.triage", AsyncMock(return_value=generated)),
@@ -637,7 +649,7 @@ def test_prohibited_model_output_is_rejected_without_persistence() -> None:
     try:
         with (
             patch(
-                "app.main.available_ollama_models",
+                "app.main.available_models",
                 AsyncMock(return_value=["qwen3:4b"]),
             ),
             patch(
@@ -658,6 +670,101 @@ def test_prohibited_model_output_is_rejected_without_persistence() -> None:
 
     assert response.status_code == 503
     assert response.json() == {
-        "detail": ("Local AI returned an invalid response. No recommendation was recorded.")
+        "detail": ("AI provider returned an invalid response. No recommendation was recorded.")
     }
     repository.add_recommendation.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_hosted_model_inventory_returns_only_configured_model() -> None:
+    with (
+        patch.object(settings, "model_provider", "openai-compatible"),
+        patch.object(settings, "model_name", "hosted-model"),
+        patch.object(settings, "model_api_key", "test-secret"),
+    ):
+        models = await available_models()
+
+    assert models == ["hosted-model"]
+
+
+@pytest.mark.asyncio
+async def test_hosted_model_inventory_requires_api_key() -> None:
+    with (
+        patch.object(settings, "model_provider", "openai-compatible"),
+        patch.object(settings, "model_api_key", ""),
+    ):
+        with pytest.raises(ValueError, match="Hosted model API key is required."):
+            await available_models()
+
+
+def test_hosted_triage_client_uses_configured_provider_settings() -> None:
+    with (
+        patch.object(settings, "model_provider", "openai-compatible"),
+        patch.object(settings, "model_base_url", "https://model.test/v1"),
+        patch.object(settings, "model_api_key", "test-secret"),
+        patch.object(settings, "model_timeout_seconds", 30.0),
+    ):
+        triage_client = create_triage_client("hosted-model")
+
+    assert isinstance(triage_client, OpenAICompatibleClient)
+    assert triage_client.base_url == "https://model.test/v1"
+    assert triage_client.api_key == "test-secret"
+    assert triage_client.model == "hosted-model"
+    assert triage_client.timeout_seconds == 30.0
+
+
+@pytest.mark.parametrize("provider", ["", "unknown"])
+def test_unsupported_model_provider_is_rejected(provider: str) -> None:
+    with patch.object(settings, "model_provider", provider):
+        with pytest.raises(
+            ValueError,
+            match=f"Unsupported model provider: {provider}",
+        ):
+            create_triage_client("hosted-model")
+
+
+def test_hosted_triage_accepts_configured_model_outside_local_hardware_policy() -> None:
+    repository = AsyncMock(spec=DecisionRepository)
+    recommendation_id = uuid4()
+    generated = GeneratedRecommendation(
+        case_id="case-1027",
+        recommendation=Priority.standard,
+        rationale="The complete routine request can remain at standard priority.",
+        evidence=["Source summary: Routine request."],
+        model="hosted-model",
+        model_confidence=0.82,
+        latency_ms=321,
+    )
+    repository.add_recommendation.return_value = Recommendation(
+        id=recommendation_id,
+        case_id=generated.case_id,
+        recommendation=generated.recommendation,
+        rationale=generated.rationale,
+        evidence=generated.evidence,
+        model=generated.model,
+        latency_ms=generated.latency_ms,
+        created_at=datetime(2026, 10, 7, 10, 0, tzinfo=UTC).isoformat(),
+    )
+    app.dependency_overrides[get_decision_repository] = repository_override(repository)
+    app.dependency_overrides[get_identity] = identity_override(CASEWORKER)
+
+    try:
+        with (
+            patch.object(settings, "model_provider", "openai-compatible"),
+            patch.object(settings, "model_name", "hosted-model"),
+            patch.object(settings, "model_api_key", "test-secret"),
+            patch(
+                "app.main.OpenAICompatibleClient.triage",
+                AsyncMock(return_value=generated),
+            ),
+        ):
+            response = client.post(
+                "/api/triage",
+                json={"case_id": "case-1027", "model": "hosted-model"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["model"] == "hosted-model"
+    repository.add_recommendation.assert_awaited_once()

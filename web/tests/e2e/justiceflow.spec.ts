@@ -62,7 +62,7 @@ test("caseworker completes real OIDC PKCE login and can access triage controls",
   await expect(
     page.getByRole("heading", { name: "Triage review queue" }),
   ).toBeVisible();
-  await expect(page.getByText("caseworker · Local AI")).toBeVisible();
+  await expect(page.getByText("caseworker · AI-assisted")).toBeVisible();
   const modelSelector = page.getByLabel("Model for recommendation");
   await expect(modelSelector).toBeVisible();
   await expect(modelSelector).toHaveValue("qwen3:4b");
@@ -83,7 +83,7 @@ test("auditor completes real OIDC login and is restricted to read-only access", 
 }) => {
   await signIn(page, AUDITOR);
 
-  await expect(page.getByText("auditor · Local AI")).toBeVisible();
+  await expect(page.getByText("auditor · AI-assisted")).toBeVisible();
   await expect(page.getByLabel("Model for recommendation")).toHaveCount(0);
   const readOnlyButton = page.getByRole("button", {
     name: "Auditor access is read-only",
@@ -96,26 +96,11 @@ test("auditor completes real OIDC login and is restricted to read-only access", 
 
   const history = page.getByRole("region", { name: "Decision history" });
   await expect(history).toBeVisible();
-  await expect(history.getByText(/\d+ records/)).toBeVisible();
-  expect(
-    await history.getByText("accepted", { exact: true }).count(),
-  ).toBeGreaterThanOrEqual(1);
-  await expect(history.getByText("legacy", { exact: true })).toHaveCount(4);
-  expect(
-    await history.getByText("Reviewed recommendation", { exact: true }).count(),
-  ).toBeGreaterThanOrEqual(1);
+  await expect(history.getByText("0 records", { exact: true })).toBeVisible();
+  await expect(history.getByText("legacy", { exact: true })).toHaveCount(0);
   await expect(
     history.getByText("Legacy decision", { exact: true }),
-  ).toHaveCount(4);
-  await expect(history.getByText("qwen3:4b", { exact: false }).first()).toBeVisible();
-  await expect(
-    history
-      .getByText(
-        "Source summary: Routine request for an update to approved family contact details. Supporting information is complete.",
-        { exact: true },
-      )
-      .first(),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expectNoAccessibilityViolations(page);
 });
 

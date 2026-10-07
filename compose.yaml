@@ -58,9 +58,11 @@ services:
       context: ./backend
     environment:
       JUSTICEFLOW_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-justiceflow}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-justiceflow}
-      JUSTICEFLOW_OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
-      JUSTICEFLOW_OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:4b}
-      JUSTICEFLOW_OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-120}
+      JUSTICEFLOW_MODEL_PROVIDER: ${MODEL_PROVIDER:-ollama}
+      JUSTICEFLOW_MODEL_BASE_URL: ${MODEL_BASE_URL:-http://host.docker.internal:11434}
+      JUSTICEFLOW_MODEL_NAME: ${MODEL_NAME:-qwen3:4b}
+      JUSTICEFLOW_MODEL_API_KEY: ${MODEL_API_KEY:-}
+      JUSTICEFLOW_MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-120}
       JUSTICEFLOW_ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       JUSTICEFLOW_LOG_LEVEL: ${LOG_LEVEL:-INFO}
       JUSTICEFLOW_LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:?Set LANGFUSE_PUBLIC_KEY in .env}
@@ -71,6 +73,7 @@ services:
       JUSTICEFLOW_OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8080/realms/justiceflow}
       JUSTICEFLOW_OIDC_AUDIENCE: ${OIDC_AUDIENCE:-justiceflow-api}
       JUSTICEFLOW_OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://identity:8080/realms/justiceflow/protocol/openid-connect/certs}
+      JUSTICEFLOW_OIDC_ROLE_CLAIM: ${OIDC_ROLE_CLAIM:-realm_access.roles}
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:

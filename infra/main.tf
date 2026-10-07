@@ -231,13 +231,23 @@ resource "azurerm_container_app" "api" {
       }
 
       env {
-        name  = "JUSTICEFLOW_OLLAMA_URL"
+        name  = "JUSTICEFLOW_MODEL_PROVIDER"
+        value = "ollama"
+      }
+
+      env {
+        name  = "JUSTICEFLOW_MODEL_BASE_URL"
         value = var.ollama_url
       }
 
       env {
-        name  = "JUSTICEFLOW_OLLAMA_MODEL"
+        name  = "JUSTICEFLOW_MODEL_NAME"
         value = var.ollama_model
+      }
+
+      env {
+        name  = "JUSTICEFLOW_MODEL_TIMEOUT_SECONDS"
+        value = "120"
       }
 
       env {
@@ -268,6 +278,11 @@ resource "azurerm_container_app" "api" {
       env {
         name  = "JUSTICEFLOW_OIDC_JWKS_URL"
         value = var.oidc_jwks_url
+      }
+
+      env {
+        name  = "JUSTICEFLOW_OIDC_ROLE_CLAIM"
+        value = var.oidc_role_claim
       }
 
       dynamic "env" {

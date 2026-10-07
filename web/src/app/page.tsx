@@ -145,7 +145,7 @@ export default function Home() {
         if (currentIdentity.role === "caseworker") {
           const modelsResponse = await fetch(`${API_URL}/api/models`, { headers });
           if (!modelsResponse.ok) {
-            throw new Error("Local model inventory request failed");
+            throw new Error("AI model inventory request failed");
           }
           const availableModels = (await modelsResponse.json()) as string[];
           setModels(availableModels);
@@ -269,16 +269,16 @@ export default function Home() {
         currentCases.map((item) =>
           item.id === decision.case_id
             ? {
-                ...item,
-                priority: decision.outcome,
-                status: "approved",
-                latest_decision: {
-                  outcome: decision.outcome,
-                  reason: decision.reason,
-                  reviewer: decision.reviewer,
-                  recorded_at: decision.recorded_at,
-                },
-              }
+              ...item,
+              priority: decision.outcome,
+              status: "approved",
+              latest_decision: {
+                outcome: decision.outcome,
+                reason: decision.reason,
+                reviewer: decision.reviewer,
+                recorded_at: decision.recorded_at,
+              },
+            }
             : item,
         ),
       );
@@ -347,7 +347,7 @@ export default function Home() {
                 {identity?.display_name ?? "Loading identity…"}
               </p>
               <p className="text-xs capitalize text-[#c8d3cc]">
-                {identity?.role ?? "unknown"} · Local AI
+                {identity?.role ?? "unknown"} · AI-assisted
               </p>
             </div>
             {identity && (
@@ -679,8 +679,8 @@ export default function Home() {
                       ))}
                     </select>
                     <p className="mt-2 text-xs leading-5 text-[#69756d]">
-                      Only installed models suitable for this 16 GB Intel Mac
-                      are shown.
+                      Only models approved for the configured AI provider are
+                      shown.
                     </p>
                   </div>
                 )}
@@ -696,7 +696,7 @@ export default function Home() {
                   {identity?.role === "auditor"
                     ? "Auditor access is read-only"
                     : aiLoading
-                      ? "Running local model…"
+                      ? "Running AI model…"
                       : "Generate AI recommendation"}
                 </button>
 
@@ -821,11 +821,10 @@ export default function Home() {
                 {message && (
                   <p
                     role={messageKind === "error" ? "alert" : "status"}
-                    className={`rounded-md p-3 text-sm ${
-                      messageKind === "error"
+                    className={`rounded-md p-3 text-sm ${messageKind === "error"
                         ? "bg-red-50 text-red-800"
                         : "bg-emerald-50 text-emerald-900"
-                    }`}
+                      }`}
                   >
                     {message}
                   </p>

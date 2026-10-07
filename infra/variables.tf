@@ -128,6 +128,17 @@ variable "oidc_audience" {
   default     = "justiceflow-api"
 }
 
+variable "oidc_role_claim" {
+  description = "Dotted path or literal top-level claim containing JusticeFlow roles."
+  type        = string
+  default     = "realm_access.roles"
+
+  validation {
+    condition     = trimspace(var.oidc_role_claim) != ""
+    error_message = "OIDC role claim must not be empty."
+  }
+}
+
 variable "oidc_jwks_url" {
   description = "OIDC JSON Web Key Set endpoint used by the API."
   type        = string

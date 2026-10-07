@@ -263,3 +263,153 @@ async def test_prohibited_model_rationale_is_rejected_and_telemetry_fails() -> N
     telemetry_payload = repr(telemetry.mock_calls) + repr(generation.mock_calls)
     assert prohibited_rationale not in telemetry_payload
     assert case.summary not in telemetry_payload
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_payload_and_response_contract() -> None:
+    from app.triage import OpenAICompatibleClient
+
+    case = get_case("case-1038")
+    assert case is not None
+
+    request = httpx.Request("POST", "https://model.test/v1/chat/completions")
+    response = httpx.Response(
+        200,
+        request=request,
+        json={
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "recommendation": "standard",
+                                "rationale": (
+                                    "The recorded hearing deadline requires urgent review."
+                                ),
+                                "evidence": ["summary", "risk_flags"],
+                                "confidence": 0.9,
+                            }
+                        )
+                    }
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 120,
+                "completion_tokens": 40,
+            },
+        },
+    )
+    post = AsyncMock(return_value=response)
+    generation = Mock()
+    telemetry = Mock()
+    telemetry.start_generation.return_value = generation
+
+    with patch.object(httpx.AsyncClient, "post", post):
+        result = await OpenAICompatibleClient(
+            base_url="https://model.test/v1/",
+            api_key="test-secret",
+            model="hosted-model",
+            timeout_seconds=30.0,
+            telemetry=telemetry,
+        ).triage(case)
+
+    post.assert_awaited_once()
+    assert post.await_args.args[0] == "https://model.test/v1/chat/completions"
+    assert post.await_args.kwargs["headers"] == {
+        "Authorization": "Bearer test-secret",
+        "Content-Type": "application/json",
+    }
+    payload = post.await_args.kwargs["json"]
+    assert payload["model"] == "hosted-model"
+    assert payload["temperature"] == 0
+    assert payload["max_tokens"] == 256
+    assert payload["response_format"] == {"type": "json_object"}
+    assert len(payload["messages"]) == 2
+    assert payload["messages"][0]["role"] == "system"
+    assert payload["messages"][1]["role"] == "user"
+    assert result.recommendation == Priority.urgent
+    assert result.model == "hosted-model"
+    assert result.model_confidence == 0.9
+    assert result.evidence == [
+        (
+            "Source summary: Interpreter requirement was not transferred to the "
+            "revised hearing record. Hearing is due within two working days."
+        ),
+        "Recorded operational flags: accessibility, hearing deadline",
+    ]
+    telemetry.start_generation.assert_called_once_with(
+        model="hosted-model",
+        case_id="case-1038",
+        service="Courts",
+        risk_flag_count=2,
+    )
+    generation.succeed.assert_called_once_with(
+        recommendation="urgent",
+        confidence=0.9,
+        latency_ms=result.latency_ms,
+        prompt_tokens=120,
+        completion_tokens=40,
+    )
+    generation.fail.assert_not_called()
+
+    telemetry_payload = repr(telemetry.mock_calls) + repr(generation.mock_calls)
+    assert case.summary not in telemetry_payload
+    assert "The recorded hearing deadline" not in telemetry_payload
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_client_rejects_invalid_output_and_fails_telemetry() -> None:
+    from app.triage import OpenAICompatibleClient
+
+    case = get_case("case-1027")
+    assert case is not None
+
+    request = httpx.Request("POST", "https://model.test/v1/chat/completions")
+    response = httpx.Response(
+        200,
+        request=request,
+        json={
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "recommendation": "urgent",
+                                "rationale": (
+                                    "The routine case requires an urgent guilty finding."
+                                ),
+                                "evidence": ["summary"],
+                                "confidence": 0.9,
+                            }
+                        )
+                    }
+                }
+            ]
+        },
+    )
+    post = AsyncMock(return_value=response)
+    generation = Mock()
+    telemetry = Mock()
+    telemetry.start_generation.return_value = generation
+
+    client = OpenAICompatibleClient(
+        base_url="https://model.test/v1",
+        api_key="test-secret",
+        model="hosted-model",
+        telemetry=telemetry,
+    )
+
+    with patch.object(httpx.AsyncClient, "post", post):
+        with pytest.raises(
+            ValueError,
+            match="Model rationale contained prohibited content.",
+        ):
+            await client.triage(case)
+
+    generation.fail.assert_called_once()
+    assert generation.fail.call_args.kwargs["error_type"] == "ModelOutputSafetyError"
+    generation.succeed.assert_not_called()
+
+    telemetry_payload = repr(telemetry.mock_calls) + repr(generation.mock_calls)
+    assert case.summary not in telemetry_payload
+    assert "guilty finding" not in telemetry_payload

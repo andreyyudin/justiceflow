@@ -1,6 +1,6 @@
 # JusticeFlow API
 
-The FastAPI service owns JusticeFlow domain rules, OIDC bearer-token validation, role authorization, local-model orchestration, persistence, deterministic safety-floor regression, fail-closed rejection of prohibited model rationale, structured logging, and required privacy-safe Langfuse tracing.
+The FastAPI service owns JusticeFlow domain rules, OIDC bearer-token validation, role authorization, provider-neutral model orchestration, persistence, deterministic safety-floor regression, fail-closed rejection of prohibited model rationale, structured logging, and required privacy-safe Langfuse tracing.
 
 ## Commands
 
@@ -19,6 +19,6 @@ Runtime configuration uses environment variables prefixed with `JUSTICEFLOW_`. S
 
 ## Authentication
 
-Protected routes require an RS256 bearer access token. The API resolves signing keys from `JUSTICEFLOW_OIDC_JWKS_URL` and validates the configured issuer and audience before deriving the caseworker or auditor role. Reviewer names come from validated token claims rather than request JSON.
+Protected routes require an RS256 bearer access token. The API resolves signing keys from `JUSTICEFLOW_OIDC_JWKS_URL` and validates the configured issuer and audience before deriving exactly one caseworker or auditor role from `JUSTICEFLOW_OIDC_ROLE_CLAIM`. The claim setting supports Keycloak's nested `realm_access.roles` path and a literal top-level namespaced Auth0 claim. Reviewer names come from validated token claims rather than request JSON.
 
-Docker Compose provides Keycloak locally so development exercises the same browser PKCE and API JWT flow used by a deployed OIDC provider.
+Docker Compose provides Keycloak locally so development exercises the same browser PKCE and API JWT flow used by a deployed OIDC provider. `JUSTICEFLOW_MODEL_PROVIDER` selects local Ollama or a hosted OpenAI-compatible endpoint without changing application-owned validation and safeguards.
