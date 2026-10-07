@@ -167,7 +167,11 @@ jobs:
         run: npm run test:e2e
       - name: Show service logs after failure
         if: failure()
-        run: docker compose logs --no-color --tail=150 identity api web
+        run: |
+          docker compose ps --all
+          docker compose logs --no-color --tail=300 \
+            identity api web langfuse-web langfuse-worker \
+            langfuse-postgres langfuse-clickhouse langfuse-redis langfuse-minio
       - name: Stop disposable stack
         if: always()
         run: docker compose down --volumes
