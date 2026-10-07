@@ -291,9 +291,12 @@ Configure these production environment variables:
 NEXT_PUBLIC_API_URL=https://YOUR-RENDER-DOMAIN
 NEXT_PUBLIC_OIDC_AUTHORITY=https://AUTH0_DOMAIN
 NEXT_PUBLIC_OIDC_CLIENT_ID=YOUR-AUTH0-CLIENT-ID
+NEXT_PUBLIC_OIDC_AUDIENCE=https://justiceflow-api
 ```
 
 Do not add a trailing slash to `NEXT_PUBLIC_API_URL` or `NEXT_PUBLIC_OIDC_AUTHORITY`.
+
+`NEXT_PUBLIC_OIDC_AUDIENCE` must exactly match the Auth0 API identifier and the backend `JUSTICEFLOW_OIDC_AUDIENCE` value. The SPA sends it as the OAuth authorization request `audience` parameter so Auth0 issues an access token for the JusticeFlow API.
 
 All `NEXT_PUBLIC_` values are embedded during the Next.js build. Redeploy the site after changing any of them.
 

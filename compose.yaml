@@ -107,6 +107,7 @@ services:
         NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8000}
         NEXT_PUBLIC_OIDC_AUTHORITY: ${PUBLIC_OIDC_AUTHORITY:-http://localhost:8080/realms/justiceflow}
         NEXT_PUBLIC_OIDC_CLIENT_ID: ${PUBLIC_OIDC_CLIENT_ID:-justiceflow-web}
+        NEXT_PUBLIC_OIDC_AUDIENCE: ${PUBLIC_OIDC_AUDIENCE:-justiceflow-api}
     depends_on:
       api:
         condition: service_healthy
