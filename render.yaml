@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: justiceflow-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    preDeployCommand: alembic upgrade head
+    envVars:
+      - key: JUSTICEFLOW_DATABASE_URL
+        sync: false
+      - key: JUSTICEFLOW_MODEL_PROVIDER
+        value: openai-compatible
+      - key: JUSTICEFLOW_MODEL_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: JUSTICEFLOW_MODEL_NAME
+        sync: false
+      - key: JUSTICEFLOW_MODEL_API_KEY
+        sync: false
+      - key: JUSTICEFLOW_MODEL_TIMEOUT_SECONDS
+        value: "120"
+      - key: JUSTICEFLOW_ALLOWED_ORIGINS
+        sync: false
+      - key: JUSTICEFLOW_LOG_LEVEL
+        value: INFO
+      - key: JUSTICEFLOW_LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: JUSTICEFLOW_LANGFUSE_SECRET_KEY
+        sync: false
+      - key: JUSTICEFLOW_LANGFUSE_BASE_URL
+        sync: false
+      - key: JUSTICEFLOW_LANGFUSE_ENVIRONMENT
+        value: hosted-demo
+      - key: JUSTICEFLOW_RELEASE
+        value: render-demo
+      - key: JUSTICEFLOW_OIDC_ISSUER
+        sync: false
+      - key: JUSTICEFLOW_OIDC_AUDIENCE
+        value: https://justiceflow-api
+      - key: JUSTICEFLOW_OIDC_JWKS_URL
+        sync: false
+      - key: JUSTICEFLOW_OIDC_ROLE_CLAIM
+        value: https://justiceflow.example/roles

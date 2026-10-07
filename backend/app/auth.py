@@ -29,9 +29,11 @@ class OidcTokenValidator:
         issuer: str,
         audience: str,
         jwks_url: str,
+        role_claim: str = "realm_access.roles",
     ) -> None:
         self._issuer = issuer
         self._audience = audience
+        self._role_claim = role_claim
         self._jwks = PyJWKClient(
             jwks_url,
             cache_keys=True,
@@ -59,7 +61,18 @@ class OidcTokenValidator:
                 headers={"WWW-Authenticate": "Bearer"},
             ) from exc
 
-        roles = claims.get("realm_access", {}).get("roles", [])
+        roles: Any = claims.get(self._role_claim)
+        if roles is None:
+            roles = claims
+            for claim_part in self._role_claim.split("."):
+                if not isinstance(roles, dict):
+                    roles = []
+                    break
+                roles = roles.get(claim_part, [])
+
+        if not isinstance(roles, list) or not all(isinstance(role, str) for role in roles):
+            roles = []
+
         permitted_roles = [role for role in (Role.caseworker, Role.auditor) if role.value in roles]
         if len(permitted_roles) != 1:
             raise HTTPException(

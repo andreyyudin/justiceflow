@@ -43,7 +43,7 @@ async function signIn(page: Page) {
   await page.getByRole("button", { name: "Sign In" }).click();
 
   await expect(page).toHaveURL("http://localhost:3000/");
-  await expect(page.getByText("caseworker · Local AI")).toBeVisible();
+  await expect(page.getByText("caseworker · AI-assisted")).toBeVisible();
 }
 
 async function generateRecommendation(page: Page) {

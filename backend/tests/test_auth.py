@@ -127,3 +127,87 @@ def test_username_is_used_when_name_is_absent(private_key) -> None:
     identity = validator_for(private_key).validate(token)
 
     assert identity.display_name == "caseworker"
+
+
+def test_namespaced_role_claim_returns_identity(private_key) -> None:
+    claim_name = "https://justiceflow.example/roles"
+    now = datetime.now(UTC)
+    token = jwt.encode(
+        {
+            "iss": ISSUER,
+            "aud": AUDIENCE,
+            "sub": "hosted-caseworker-001",
+            "iat": now,
+            "exp": now + timedelta(minutes=5),
+            "name": "Hosted Caseworker",
+            claim_name: ["caseworker"],
+        },
+        private_key,
+        algorithm="RS256",
+        headers={"kid": "test-key"},
+    )
+    validator = OidcTokenValidator(
+        issuer=ISSUER,
+        audience=AUDIENCE,
+        jwks_url="http://identity.test/certs",
+        role_claim=claim_name,
+    )
+    signing_key = Mock()
+    signing_key.key = private_key.public_key()
+    validator._jwks = Mock(spec=PyJWKClient)
+    validator._jwks.get_signing_key_from_jwt.return_value = signing_key
+
+    identity = validator.validate(token)
+
+    assert identity == Identity(
+        subject="hosted-caseworker-001",
+        display_name="Hosted Caseworker",
+        role=Role.caseworker,
+    )
+
+
+@pytest.mark.parametrize(
+    "claim_value",
+    [
+        "caseworker",
+        {"role": "caseworker"},
+        ["caseworker", 42],
+        ["caseworker", "auditor"],
+    ],
+)
+def test_namespaced_role_claim_requires_string_list_with_one_permitted_role(
+    private_key,
+    claim_value,
+) -> None:
+    claim_name = "https://justiceflow.example/roles"
+    now = datetime.now(UTC)
+    token = jwt.encode(
+        {
+            "iss": ISSUER,
+            "aud": AUDIENCE,
+            "sub": "hosted-user-001",
+            "iat": now,
+            "exp": now + timedelta(minutes=5),
+            "name": "Hosted User",
+            claim_name: claim_value,
+        },
+        private_key,
+        algorithm="RS256",
+        headers={"kid": "test-key"},
+    )
+    validator = OidcTokenValidator(
+        issuer=ISSUER,
+        audience=AUDIENCE,
+        jwks_url="http://identity.test/certs",
+        role_claim=claim_name,
+    )
+    signing_key = Mock()
+    signing_key.key = private_key.public_key()
+    validator._jwks = Mock(spec=PyJWKClient)
+    validator._jwks.get_signing_key_from_jwt.return_value = signing_key
+
+    with pytest.raises(HTTPException) as error:
+        validator.validate(token)
+
+    assert error.value.status_code == 403
+    assert error.value.detail == ("Token must contain exactly one permitted JusticeFlow role.")

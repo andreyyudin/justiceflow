@@ -31,11 +31,17 @@ from .schemas import (
     TriageRequest,
     TriageResult,
 )
-from .triage import ModelOutputSafetyError, OllamaClient
+from .triage import (
+    ModelOutputSafetyError,
+    OllamaClient,
+    OpenAICompatibleClient,
+    TriageClient,
+)
 
 logger = structlog.get_logger()
 
 ModelNames = list[str]
+HealthStatus = dict[str, str]
 
 HARDWARE_APPROPRIATE_MODELS = frozenset(
     {
@@ -52,9 +58,11 @@ HARDWARE_APPROPRIATE_MODELS = frozenset(
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="JUSTICEFLOW_")
-    ollama_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen3:4b"
-    ollama_timeout_seconds: float = 120.0
+    model_provider: str = "ollama"
+    model_base_url: str = "http://localhost:11434"
+    model_name: str = "qwen3:4b"
+    model_api_key: str = ""
+    model_timeout_seconds: float = 120.0
     allowed_origins: str = "http://localhost:3000"
     database_url: str = "postgresql+asyncpg://localhost/justiceflow"
     log_level: str = "INFO"
@@ -66,6 +74,7 @@ class Settings(BaseSettings):
     oidc_issuer: str = "http://localhost:8080/realms/justiceflow"
     oidc_audience: str = "justiceflow-api"
     oidc_jwks_url: str = "http://localhost:8080/realms/justiceflow/protocol/openid-connect/certs"
+    oidc_role_claim: str = "realm_access.roles"
 
 
 settings = Settings()  # type: ignore[call-arg]  # Values are loaded from required environment variables.
@@ -97,6 +106,7 @@ oidc_validator = OidcTokenValidator(
     issuer=settings.oidc_issuer,
     audience=settings.oidc_audience,
     jwks_url=settings.oidc_jwks_url,
+    role_claim=settings.oidc_role_claim,
 )
 get_identity = create_identity_dependency(oidc_validator)
 IdentityDependency = Annotated[Identity, Depends(get_identity)]
@@ -121,8 +131,12 @@ app.add_middleware(
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok", "model": settings.ollama_model}
+async def health() -> HealthStatus:
+    return {
+        "status": "ok",
+        "model": settings.model_name,
+        "provider": settings.model_provider,
+    }
 
 
 @app.get("/api/identity")
@@ -130,9 +144,17 @@ async def current_identity(identity: IdentityDependency) -> Identity:
     return identity
 
 
-async def available_ollama_models() -> ModelNames:
+async def available_models() -> ModelNames:
+    if settings.model_provider == "openai-compatible":
+        if not settings.model_api_key.strip():
+            raise ValueError("Hosted model API key is required.")
+        return [settings.model_name]
+
+    if settings.model_provider != "ollama":
+        raise ValueError(f"Unsupported model provider: {settings.model_provider}")
+
     async with httpx.AsyncClient(timeout=5.0) as client:
-        response = await client.get(f"{settings.ollama_url}/api/tags")
+        response = await client.get(f"{settings.model_base_url}/api/tags")
         response.raise_for_status()
 
     installed = {
@@ -142,21 +164,44 @@ async def available_ollama_models() -> ModelNames:
     }
     available = sorted(installed & HARDWARE_APPROPRIATE_MODELS)
 
-    if settings.ollama_model in available:
-        available.remove(settings.ollama_model)
-        available.insert(0, settings.ollama_model)
+    if settings.model_name in available:
+        available.remove(settings.model_name)
+        available.insert(0, settings.model_name)
 
     return available
 
 
+def create_triage_client(model: str) -> TriageClient:
+    if settings.model_provider == "openai-compatible":
+        if not settings.model_api_key.strip():
+            raise ValueError("Hosted model API key is required.")
+        return OpenAICompatibleClient(
+            base_url=settings.model_base_url,
+            api_key=settings.model_api_key,
+            model=model,
+            timeout_seconds=settings.model_timeout_seconds,
+            telemetry=llm_telemetry,
+        )
+
+    if settings.model_provider != "ollama":
+        raise ValueError(f"Unsupported model provider: {settings.model_provider}")
+
+    return OllamaClient(
+        base_url=settings.model_base_url,
+        model=model,
+        timeout_seconds=settings.model_timeout_seconds,
+        telemetry=llm_telemetry,
+    )
+
+
 @app.get(
     "/api/models",
-    responses={503: {"description": "Local AI provider unavailable"}},
+    responses={503: {"description": "AI provider unavailable"}},
 )
 async def list_models(identity: IdentityDependency) -> ModelNames:
     authorize(identity, Role.caseworker)
     try:
-        models = await available_ollama_models()
+        models = await available_models()
     except (httpx.HTTPError, KeyError, ValueError) as exc:
         logger.warning(
             "model_inventory_failed",
@@ -165,13 +210,13 @@ async def list_models(identity: IdentityDependency) -> ModelNames:
         )
         raise HTTPException(
             status_code=503,
-            detail="Local AI is unavailable. Start Ollama and try again.",
+            detail="The configured AI provider is unavailable.",
         ) from exc
 
     if not models:
         raise HTTPException(
             status_code=503,
-            detail="No hardware-appropriate local models are installed.",
+            detail="No approved models are available from the configured AI provider.",
         )
 
     return models
@@ -223,7 +268,7 @@ async def decision_history(
     responses={
         404: {"description": "Case not found"},
         422: {"description": "Selected model is not approved or installed"},
-        503: {"description": "Local AI provider unavailable"},
+        503: {"description": "AI provider unavailable"},
     },
 )
 async def triage_case(
@@ -236,14 +281,14 @@ async def triage_case(
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    if request.model not in HARDWARE_APPROPRIATE_MODELS:
+    if settings.model_provider == "ollama" and request.model not in HARDWARE_APPROPRIATE_MODELS:
         raise HTTPException(
             status_code=422,
             detail="Selected model is not approved for this hardware.",
         )
 
     try:
-        installed_models = await available_ollama_models()
+        installed_models = await available_models()
     except (httpx.HTTPError, KeyError, ValueError) as exc:
         logger.warning(
             "model_inventory_failed",
@@ -253,21 +298,23 @@ async def triage_case(
         )
         raise HTTPException(
             status_code=503,
-            detail="Local AI is unavailable. Start Ollama and try again.",
+            detail="The configured AI provider is unavailable.",
         ) from exc
 
     if request.model not in installed_models:
         raise HTTPException(
             status_code=422,
-            detail="Selected model is not installed in Ollama.",
+            detail="Selected model is not available from the configured AI provider.",
         )
 
-    client = OllamaClient(
-        settings.ollama_url,
-        request.model,
-        settings.ollama_timeout_seconds,
-        llm_telemetry,
-    )
+    try:
+        client = create_triage_client(request.model)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Configured AI provider is unavailable.",
+        ) from exc
+
     try:
         result = await client.triage(case)
     except ModelOutputSafetyError as exc:
@@ -278,7 +325,7 @@ async def triage_case(
         )
         raise HTTPException(
             status_code=503,
-            detail=("Local AI returned an invalid response. No recommendation was recorded."),
+            detail=("AI provider returned an invalid response. No recommendation was recorded."),
         ) from exc
     except (httpx.HTTPError, KeyError, ValueError) as exc:
         logger.warning(
@@ -289,10 +336,7 @@ async def triage_case(
         )
         raise HTTPException(
             status_code=503,
-            detail=(
-                "Local AI is unavailable. Start Ollama and ensure the configured "
-                "model is installed."
-            ),
+            detail="The configured AI provider or model is unavailable.",
         ) from exc
     persisted = await repository.add_recommendation(
         RecommendationCreate(
