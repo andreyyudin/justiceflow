@@ -73,7 +73,7 @@ postgresql://...        -> postgresql+asyncpg://...
 postgres://...          -> postgresql+asyncpg://...
 ```
 
-Preserve the hostname, username, password, database, and query parameters supplied by Neon. If Neon includes `sslmode=require`, retain it.
+Preserve the hostname, username, password, database, and query parameters supplied by Neon. The backend normalizes Neon's libpq-style `sslmode` and `channel_binding` parameters for the asyncpg driver before application or migration connections are opened.
 
 Store the converted value for the Render variable:
 

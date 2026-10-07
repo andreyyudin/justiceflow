@@ -6,6 +6,7 @@ from alembic import context
 from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from app.database_url import normalize_asyncpg_url
 from app.models import Base
 
 SQLALCHEMY_URL_OPTION = "sqlalchemy.url"
@@ -15,7 +16,10 @@ database_url = os.environ.get(
     "JUSTICEFLOW_DATABASE_URL",
     config.get_main_option(SQLALCHEMY_URL_OPTION),
 )
-config.set_main_option(SQLALCHEMY_URL_OPTION, database_url)
+config.set_main_option(
+    SQLALCHEMY_URL_OPTION,
+    normalize_asyncpg_url(database_url),
+)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
