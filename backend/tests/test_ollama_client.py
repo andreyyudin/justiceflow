@@ -42,6 +42,9 @@ async def test_ollama_payload_disables_thinking_and_bounds_output() -> None:
 
     payload = post.await_args.kwargs["json"]
     assert payload["think"] is False
+    system_prompt = payload["messages"][0]["content"]
+    assert "confidence: a JSON number from 0 to 1, never a word or string" in system_prompt
+    assert "Do not include additional fields, Markdown, code fences" in system_prompt
     assert payload["options"] == {
         "temperature": 0,
         "num_predict": 256,
@@ -326,6 +329,9 @@ async def test_openai_compatible_payload_and_response_contract() -> None:
     assert payload["response_format"] == {"type": "json_object"}
     assert len(payload["messages"]) == 2
     assert payload["messages"][0]["role"] == "system"
+    system_prompt = payload["messages"][0]["content"]
+    assert "confidence: a JSON number from 0 to 1, never a word or string" in system_prompt
+    assert "Do not include additional fields, Markdown, code fences" in system_prompt
     assert payload["messages"][1]["role"] == "user"
     assert result.recommendation == Priority.urgent
     assert result.model == "hosted-model"
