@@ -10,6 +10,8 @@ const authority =
   "http://localhost:8080/realms/justiceflow";
 const clientId =
   process.env.NEXT_PUBLIC_OIDC_CLIENT_ID ?? "justiceflow-web";
+const audience =
+  process.env.NEXT_PUBLIC_OIDC_AUDIENCE ?? "justiceflow-api";
 
 export function createUserManager(): UserManager {
   const settings: UserManagerSettings = {
@@ -19,6 +21,9 @@ export function createUserManager(): UserManager {
     post_logout_redirect_uri: window.location.origin,
     response_type: "code",
     scope: "openid profile",
+    extraQueryParams: {
+      audience,
+    },
     automaticSilentRenew: true,
     userStore: new WebStorageStateStore({
       store: window.sessionStorage,
