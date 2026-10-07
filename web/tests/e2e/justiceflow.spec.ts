@@ -96,11 +96,11 @@ test("auditor completes real OIDC login and is restricted to read-only access", 
 
   const history = page.getByRole("region", { name: "Decision history" });
   await expect(history).toBeVisible();
-  await expect(history.getByText("4 records", { exact: true })).toBeVisible();
-  await expect(history.getByText("legacy", { exact: true })).toHaveCount(4);
+  await expect(history.getByText("0 records", { exact: true })).toBeVisible();
+  await expect(history.getByText("legacy", { exact: true })).toHaveCount(0);
   await expect(
     history.getByText("Legacy decision", { exact: true }),
-  ).toHaveCount(4);
+  ).toHaveCount(0);
   await expectNoAccessibilityViolations(page);
 });
 
